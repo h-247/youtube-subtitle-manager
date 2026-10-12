@@ -101,6 +101,20 @@ export function extractPlaylistId(input: string): string | null {
 
 type Metadata = { title: string; channelTitle: string | null; channelUrl: string | null; thumbnailUrl: string; duration: number | null };
 
+const YOUTUBE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+export function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const requestUrl = input instanceof Request ? input.url : String(input);
+  const host = new URL(requestUrl).hostname.toLowerCase();
+  const headers = new Headers(init.headers);
+  headers.set("User-Agent", YOUTUBE_USER_AGENT);
+  if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+    const cookie = env.YOUTUBE_COOKIE?.trim();
+    if (cookie) headers.set("Cookie", cookie);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 async function readInitialPlayerResponse(html: string) {
   const marker = "var ytInitialPlayerResponse = ";
   const start = html.indexOf(marker);
@@ -145,11 +159,11 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
     visitorData,
   };
   try {
-    const response = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
+    const response = await youtubeFetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": client.userAgent,
+        "User-Agent": YOUTUBE_USER_AGENT,
         Origin: "https://www.youtube.com",
         Referer: `https://www.youtube.com/watch?v=${videoId}`,
         "X-YouTube-Client-Name": "101",
@@ -176,8 +190,8 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
 export async function getMetadata(videoId: string): Promise<{ metadata: Metadata; player: Record<string, any> | null }> {
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
   const [oembed, page] = await Promise.all([
-    fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }),
-    fetch(videoUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; SubtitleLibrary/1.0)", "Accept-Language": "en-US,en;q=0.9" }, signal: AbortSignal.timeout(15000) }),
+    youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }),
+    youtubeFetch(videoUrl, { headers: { "Accept-Language": "en-US,en;q=0.9" }, signal: AbortSignal.timeout(15000) }),
   ]);
   if (!oembed.ok) throw new Error(oembed.status === 404 ? "YouTube video was not found or is private." : `YouTube metadata request failed (${oembed.status}).`);
   const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
@@ -238,10 +252,18 @@ function toSrt(content: string) {
 }
 
 export async function downloadEnglishCaptions(player: Record<string, any> | null) {
-  const tracks: Array<{ baseUrl?: string; languageCode?: string; kind?: string }> =
+  const tracks: Array<{ baseUrl?: string; languageCode?: string; kind?: string; isTranslatable?: boolean; translatedFrom?: string; translated?: boolean }> =
     player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
   const english = tracks.filter((track) => /^en(?:[-_]|$)/i.test(track.languageCode || ""));
-  const ordered = [...english.filter((track) => track.kind !== "asr"), ...english.filter((track) => track.kind === "asr")];
+  const translated = tracks
+    .filter((track) => track.isTranslatable && !/^en(?:[-_]|$)/i.test(track.languageCode || ""))
+    .map((track) => ({ ...track, translatedFrom: track.languageCode, translated: true, languageCode: "en" }));
+  const ordered = [
+    ...english.filter((track) => track.kind !== "asr"),
+    ...english.filter((track) => track.kind === "asr"),
+    ...translated.filter((track) => track.kind !== "asr"),
+    ...translated.filter((track) => track.kind === "asr"),
+  ];
   if (!ordered.length) throw new Error("No English subtitle track is available for this video.");
 
   let lastError = "YouTube returned an empty subtitle track.";
@@ -251,14 +273,15 @@ export async function downloadEnglishCaptions(player: Record<string, any> | null
       try {
         const url = new URL(track.baseUrl);
         url.searchParams.set("key", "yt8");
-        url.searchParams.set("lang", track.languageCode || "en");
+        url.searchParams.set("lang", track.translatedFrom || track.languageCode || "en");
+        if (track.translated) url.searchParams.set("tlang", "en");
         url.searchParams.set("fmt", format);
-        const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; SubtitleLibrary/1.0)", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(12000) });
+        const response = await youtubeFetch(url, { headers: { Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(12000) });
         if (response.status === 429) throw new Error("YouTube rate limited caption download (HTTP 429).");
         if (!response.ok) throw new Error(`YouTube caption request failed (${response.status}).`);
         const content = await response.text();
         const subtitle = toSrt(content);
-        if (subtitle) return { subtitle, type: track.kind === "asr" ? "AUTO" : "MANUAL", language: track.languageCode || "en" };
+        if (subtitle) return { subtitle, type: track.translated || track.kind === "asr" ? "AUTO" : "MANUAL", language: "en" };
         lastError = "YouTube returned an empty subtitle track.";
       } catch (error) {
         lastError = error instanceof Error ? error.message : "Subtitle download failed.";

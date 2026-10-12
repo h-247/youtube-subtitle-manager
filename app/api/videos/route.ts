@@ -1,5 +1,4 @@
-import { currentSiteUser, database, errorResponse, json, videoFromRow, type LibraryVideo } from "../../../lib/server-api";
-import { retryVideo } from "../../../lib/server-api";
+import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, retryVideo, type LibraryVideo } from "../../../lib/server-api";
 import { syncOnePendingSubtitle } from "../../../lib/drive-service";
 
 const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at";
@@ -62,7 +61,7 @@ export async function POST(request: Request) {
   let playlistHtml = "";
   if (!url.searchParams.get("v") && !url.pathname.match(/^\/(?:shorts|embed|live)\//) && host !== "youtu.be" && playlistId) {
     const playlistUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}&hl=en`;
-    const response = await fetch(playlistUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; SubtitleLibrary/1.0)" }, signal: AbortSignal.timeout(15000) }).catch(() => null);
+    const response = await youtubeFetch(playlistUrl, { signal: AbortSignal.timeout(15000) }).catch(() => null);
     if (!response?.ok) return errorResponse("Could not read this YouTube playlist. Check that it is public and try again.");
     playlistHtml = await response.text();
   }
@@ -82,7 +81,7 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const metaResponse = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
+    const metaResponse = await youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
     if (!metaResponse?.ok) {
       results.push({ video_id: videoId, title: videoId, status: "FAILED", subtitle_type: "NONE", is_duplicate: false, error: "YouTube video is unavailable or private." });
       continue;
