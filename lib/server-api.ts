@@ -141,18 +141,13 @@ async function readInitialPlayerResponse(html: string) {
   return null;
 }
 
-type PlayerDiagnostics = { hasApiKey?: boolean; hasVisitorData?: boolean; apiStatus?: number; playability?: string; apiError?: string; skipReason?: string };
+type PlayerDiagnostics = { playability?: string };
 
 async function readWorkerPlayerResponse(html: string, videoId: string, playerPageUrl: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
   const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
   const visitorData = html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
     ?? fallback?.responseContext?.visitorData;
-  diagnostics.hasApiKey = Boolean(apiKey);
-  diagnostics.hasVisitorData = Boolean(visitorData);
-  if (!apiKey || !visitorData) {
-    diagnostics.skipReason = "missing key or visitor context";
-    return fallback;
-  }
+  if (!apiKey || !visitorData) return fallback;
 
   const client = {
     clientName: "VISIONOS",
@@ -188,7 +183,6 @@ async function readWorkerPlayerResponse(html: string, videoId: string, playerPag
       }),
       signal: AbortSignal.timeout(15000),
     });
-    diagnostics.apiStatus = response.status;
     if (!response.ok) return fallback;
     const player = await response.json() as Record<string, any>;
     diagnostics.playability = String(player.playabilityStatus?.status || "unknown");
@@ -201,8 +195,7 @@ async function readWorkerPlayerResponse(html: string, videoId: string, playerPag
       player.captions = fallback?.captions;
     }
     return player;
-  } catch (error) {
-    diagnostics.apiError = error instanceof Error ? error.name : "request failed";
+  } catch {
     return fallback;
   }
 }
@@ -220,11 +213,12 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   const initialPlayer = await readInitialPlayerResponse(html);
   const diagnostics: PlayerDiagnostics = {};
   const player = await readWorkerPlayerResponse(html, videoId, playerPageUrl, initialPlayer, diagnostics);
-  const initialTrackCount = initialPlayer?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   if (!playerTrackCount) {
-    const cookies = youtubeCookieDiagnostics();
-    throw new Error(`YouTube caption metadata missing (player page=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}; cookies=${cookies.configured ? cookies.pairCount : 0}; session=${cookies.hasSessionCookie ? "yes" : "no"}).`);
+    if (diagnostics.playability === "LOGIN_REQUIRED") {
+      throw new Error("YouTube rejected the configured sign-in session from Sites. Use the original backend or another hosting runtime YouTube accepts.");
+    }
+    throw new Error("YouTube did not return caption tracks. Check the cookie session or use another backend runtime.");
   }
   const duration = Number(player?.videoDetails?.lengthSeconds);
   return {
@@ -242,14 +236,6 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
 function xmlDecode(value: string) {
   return value.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
-}
-
-function youtubeCookieDiagnostics() {
-  const cookie = env.YOUTUBE_COOKIE?.split(/[;\r\n]+/)
-    .map((part) => part.trim())
-    .filter((part) => /^[!#$%&'*+.^_`|~0-9A-Za-z_-]+=/.test(part) && !/[\u0000-\u001f\u007f]/.test(part))
-    .join("; ") ?? "";
-  return { configured: Boolean(cookie), pairCount: cookie ? cookie.split("; ").length : 0, hasSessionCookie: /(?:^|;\s*)__Secure-3PSID=/.test(cookie) };
 }
 
 function timestamp(milliseconds: number) {
