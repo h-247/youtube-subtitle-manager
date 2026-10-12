@@ -141,11 +141,18 @@ async function readInitialPlayerResponse(html: string) {
   return null;
 }
 
-async function readWorkerPlayerResponse(html: string, videoId: string, fallback: Record<string, any> | null) {
+type PlayerDiagnostics = { hasApiKey?: boolean; hasVisitorData?: boolean; apiStatus?: number; playability?: string; apiError?: string; skipReason?: string };
+
+async function readWorkerPlayerResponse(html: string, videoId: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
   const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
   const visitorData = html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
     ?? fallback?.responseContext?.visitorData;
-  if (!apiKey || !visitorData) return fallback;
+  diagnostics.hasApiKey = Boolean(apiKey);
+  diagnostics.hasVisitorData = Boolean(visitorData);
+  if (!apiKey || !visitorData) {
+    diagnostics.skipReason = "missing key or visitor context";
+    return fallback;
+  }
 
   const client = {
     clientName: "VISIONOS",
@@ -181,8 +188,10 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
       }),
       signal: AbortSignal.timeout(15000),
     });
+    diagnostics.apiStatus = response.status;
     if (!response.ok) return fallback;
     const player = await response.json() as Record<string, any>;
+    diagnostics.playability = String(player.playabilityStatus?.status || "unknown");
     if (player.playabilityStatus?.status !== "OK") return fallback;
     const playerTracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     const fallbackTracks = fallback?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -192,7 +201,8 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
       player.captions = fallback?.captions;
     }
     return player;
-  } catch {
+  } catch (error) {
+    diagnostics.apiError = error instanceof Error ? error.name : "request failed";
     return fallback;
   }
 }
@@ -206,7 +216,14 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   if (!oembed.ok) throw new Error(oembed.status === 404 ? "YouTube video was not found or is private." : `YouTube metadata request failed (${oembed.status}).`);
   const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
   const html = page.ok ? await page.text() : "";
-  const player = await readWorkerPlayerResponse(html, videoId, await readInitialPlayerResponse(html));
+  const initialPlayer = await readInitialPlayerResponse(html);
+  const diagnostics: PlayerDiagnostics = {};
+  const player = await readWorkerPlayerResponse(html, videoId, initialPlayer, diagnostics);
+  const initialTrackCount = initialPlayer?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
+  const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
+  if (!playerTrackCount) {
+    throw new Error(`YouTube caption metadata missing (watch=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}).`);
+  }
   const duration = Number(player?.videoDetails?.lengthSeconds);
   return {
     metadata: {
