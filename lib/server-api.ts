@@ -119,10 +119,9 @@ export function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 }
 
 async function readInitialPlayerResponse(html: string) {
-  const marker = "var ytInitialPlayerResponse = ";
-  const start = html.indexOf(marker);
-  if (start < 0) return null;
-  const jsonStart = start + marker.length;
+  const marker = /ytInitialPlayerResponse\s*=\s*/.exec(html);
+  if (!marker) return null;
+  const jsonStart = marker.index + marker[0].length;
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -184,7 +183,15 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
     });
     if (!response.ok) return fallback;
     const player = await response.json() as Record<string, any>;
-    return player.playabilityStatus?.status === "OK" ? player : fallback;
+    if (player.playabilityStatus?.status !== "OK") return fallback;
+    const playerTracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    const fallbackTracks = fallback?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    const playerHasTranslations = Array.isArray(playerTracks) && playerTracks.some((track: Record<string, unknown>) => track.isTranslatable === true);
+    const fallbackHasTranslations = Array.isArray(fallbackTracks) && fallbackTracks.some((track: Record<string, unknown>) => track.isTranslatable === true);
+    if ((!Array.isArray(playerTracks) || playerTracks.length === 0 || (!playerHasTranslations && fallbackHasTranslations)) && Array.isArray(fallbackTracks) && fallbackTracks.length > 0) {
+      player.captions = fallback?.captions;
+    }
+    return player;
   } catch {
     return fallback;
   }
