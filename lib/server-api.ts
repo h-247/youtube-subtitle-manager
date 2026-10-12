@@ -223,7 +223,8 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   const initialTrackCount = initialPlayer?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   if (!playerTrackCount) {
-    throw new Error(`YouTube caption metadata missing (player page=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}).`);
+    const cookies = youtubeCookieDiagnostics();
+    throw new Error(`YouTube caption metadata missing (player page=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}; cookies=${cookies.configured ? cookies.pairCount : 0}; session=${cookies.hasSessionCookie ? "yes" : "no"}).`);
   }
   const duration = Number(player?.videoDetails?.lengthSeconds);
   return {
@@ -241,6 +242,14 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
 function xmlDecode(value: string) {
   return value.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+}
+
+function youtubeCookieDiagnostics() {
+  const cookie = env.YOUTUBE_COOKIE?.split(/[;\r\n]+/)
+    .map((part) => part.trim())
+    .filter((part) => /^[!#$%&'*+.^_`|~0-9A-Za-z_-]+=/.test(part) && !/[\u0000-\u001f\u007f]/.test(part))
+    .join("; ") ?? "";
+  return { configured: Boolean(cookie), pairCount: cookie ? cookie.split("; ").length : 0, hasSessionCookie: /(?:^|;\s*)__Secure-3PSID=/.test(cookie) };
 }
 
 function timestamp(milliseconds: number) {
