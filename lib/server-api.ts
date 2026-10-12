@@ -143,7 +143,7 @@ async function readInitialPlayerResponse(html: string) {
 
 type PlayerDiagnostics = { hasApiKey?: boolean; hasVisitorData?: boolean; apiStatus?: number; playability?: string; apiError?: string; skipReason?: string };
 
-async function readWorkerPlayerResponse(html: string, videoId: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
+async function readWorkerPlayerResponse(html: string, videoId: string, playerPageUrl: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
   const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
   const visitorData = html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
     ?? fallback?.responseContext?.visitorData;
@@ -174,7 +174,7 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
         "Content-Type": "application/json",
         "User-Agent": YOUTUBE_USER_AGENT,
         Origin: "https://www.youtube.com",
-        Referer: `https://www.youtube.com/watch?v=${videoId}`,
+        Referer: playerPageUrl,
         "X-YouTube-Client-Name": "101",
         "X-YouTube-Client-Version": client.clientVersion,
         "X-Goog-Visitor-Id": visitorData,
@@ -209,20 +209,21 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
 
 export async function getMetadata(videoId: string): Promise<{ metadata: Metadata; player: Record<string, any> | null }> {
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
+  const playerPageUrl = `https://www.youtube.com/embed/${videoId}?hl=en&cc_load_policy=1`;
   const [oembed, page] = await Promise.all([
     youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }),
-    youtubeFetch(videoUrl, { headers: { "Accept-Language": "en-US,en;q=0.9" }, signal: AbortSignal.timeout(15000) }),
+    youtubeFetch(playerPageUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }),
   ]);
   if (!oembed.ok) throw new Error(oembed.status === 404 ? "YouTube video was not found or is private." : `YouTube metadata request failed (${oembed.status}).`);
   const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
   const html = page.ok ? await page.text() : "";
   const initialPlayer = await readInitialPlayerResponse(html);
   const diagnostics: PlayerDiagnostics = {};
-  const player = await readWorkerPlayerResponse(html, videoId, initialPlayer, diagnostics);
+  const player = await readWorkerPlayerResponse(html, videoId, playerPageUrl, initialPlayer, diagnostics);
   const initialTrackCount = initialPlayer?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   if (!playerTrackCount) {
-    throw new Error(`YouTube caption metadata missing (watch=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}).`);
+    throw new Error(`YouTube caption metadata missing (player page=${page.status}; html=${html.length}; initial=${initialPlayer ? "yes" : "no"}/${initialTrackCount}; apiKey=${diagnostics.hasApiKey ? "yes" : "no"}; visitor=${diagnostics.hasVisitorData ? "yes" : "no"}; player=${diagnostics.apiStatus ?? diagnostics.skipReason ?? diagnostics.apiError ?? "unknown"}/${diagnostics.playability ?? "unknown"}; tracks=${playerTrackCount}).`);
   }
   const duration = Number(player?.videoDetails?.lengthSeconds);
   return {
