@@ -19,6 +19,8 @@ export const videos = sqliteTable("videos", {
   subtitleText: text("subtitle_text"),
   driveFileId: text("drive_file_id"),
   driveFileUrl: text("drive_file_url"),
+  driveRetryCount: integer("drive_retry_count").notNull().default(0),
+  driveLastAttemptAt: text("drive_last_attempt_at"),
   chatgptLink: text("chatgpt_link"),
   retryCount: integer("retry_count").notNull().default(0),
   progressMessage: text("progress_message"),
@@ -42,3 +44,17 @@ export const channelTags = sqliteTable("channel_tags", {
   uniqueIndex("uq_user_channel_tag").on(table.userId, table.channelTitle, table.tag),
   index("ix_channel_tags_user").on(table.userId),
 ]);
+
+export const driveConnections = sqliteTable("drive_connections", {
+  userId: text("user_id").primaryKey(),
+  encryptedCredentials: text("encrypted_credentials").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const driveOauthStates = sqliteTable("drive_oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("ix_drive_oauth_states_expiry").on(table.expiresAt)]);

@@ -17,7 +17,7 @@ Sites provisions the `DB` D1 binding from `.openai/hosting.json`. The Drizzle sc
 
 YouTube captions are retrieved through YouTube's public player and timed-text HTTP endpoints. Workers do not run `yt-dlp` or a persistent Python worker; caption retries are driven by dashboard requests and pause while no dashboard is open.
 
-Google Drive upload is not configured in this Sites version. The dashboard stores subtitle text in D1 and offers direct SRT downloads. To enable Drive, a later change needs Google OAuth callback/secret setup and secure per-user token storage.
+Google Drive uses the OAuth authorization-code flow and the least-privilege `drive.file` scope. Set these production Site secrets before users connect: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_TOKEN_ENCRYPTION_KEY` (a base64url-encoded random 32-byte key). Register `https://youtube-subtitle-manager.h-247.chatgpt.site/api/drive/callback` as an authorized redirect URI in the Google OAuth client and enable the Google Drive API. Per-user access and refresh tokens are encrypted with AES-GCM before they are stored in D1. Completed SRT files are uploaded into a `YouTube Subtitles` folder; connected users' completed files, including existing files, are synced one at a time as the dashboard refreshes, with uncapped retries and exponential backoff while the dashboard is active. Direct SRT downloads remain available.
 
 ## Local development
 

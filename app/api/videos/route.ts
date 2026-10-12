@@ -1,5 +1,6 @@
 import { currentSiteUser, database, errorResponse, json, videoFromRow, type LibraryVideo } from "../../../lib/server-api";
 import { retryVideo } from "../../../lib/server-api";
+import { syncOnePendingSubtitle } from "../../../lib/drive-service";
 
 const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at";
 
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
   if (!user) return errorResponse("Sign in with ChatGPT to access your library.", 401);
   const db = database();
   const url = new URL(request.url);
+  await syncOnePendingSubtitle(user.userId);
   const search = url.searchParams.get("search")?.trim() ?? "";
   const status = url.searchParams.get("status")?.trim().toUpperCase() ?? "ALL";
   const watchStatus = url.searchParams.get("watch_status")?.trim().toUpperCase() ?? "ALL";

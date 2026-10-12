@@ -81,7 +81,7 @@ function DashboardContent() {
 
   useEffect(() => {
     if (searchParams.get("drive_connected") === "true") {
-      setBannerMessage("Google Drive account connected successfully! Future subtitles will sync to Drive.");
+      setBannerMessage("Google Drive connected. Completed subtitles will sync as the dashboard refreshes.");
     } else if (searchParams.get("drive_error")) {
       setBannerMessage(`Drive Connection Error: ${searchParams.get("drive_error")}`);
     }

@@ -90,7 +90,7 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
                 </button>
               )
             ) : (
-              <div className="flex items-center bg-neutral-800 text-neutral-400 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="Google Drive OAuth credentials have not been configured for this Site">
+              <div className="flex items-center bg-neutral-800 text-neutral-400 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="Add Google OAuth client ID and secret to this Site to enable Drive">
                 <AlertCircle className="w-3.5 h-3.5 text-neutral-500 mr-1" />
                 Drive setup required
               </div>
