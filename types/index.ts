@@ -1,0 +1,75 @@
+export interface User {
+  id: string;
+  email: string;
+  is_active: boolean;
+  has_drive_connected: boolean;
+  created_at: string;
+}
+
+export type WatchStatus = "TO_DO" | "DOING" | "DONE";
+export type VideoStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "NO_SUBTITLES" | "FAILED";
+export type SubtitleType = "MANUAL" | "AUTO" | "NONE";
+
+export interface Video {
+  id: number;
+  user_id: number;
+  video_id: string;
+  youtube_url: string;
+  title: string;
+  channel_title: string | null;
+  channel_url?: string | null;
+  channel_tags?: string | null;
+  duration: number | null;
+  thumbnail_url: string | null;
+  status: VideoStatus;
+  watch_status: WatchStatus;
+  subtitle_type: SubtitleType;
+  subtitle_language: string | null;
+  drive_file_id: string | null;
+  drive_file_url: string | null;
+  chatgpt_link: string | null;
+  retry_count: number;
+  progress_message: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoIngestResultItem {
+  video_id: string;
+  title: string;
+  status: VideoStatus;
+  subtitle_type: SubtitleType;
+  is_duplicate: boolean;
+  error?: string | null;
+  video?: Video | null;
+}
+
+export interface VideoIngestResponse {
+  total_found: number;
+  processed: number;
+  skipped_duplicates: number;
+  failed: number;
+  results: VideoIngestResultItem[];
+}
+
+export interface VideoListResponse {
+  items: Video[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface DriveStatus {
+  is_configured: boolean;
+  is_connected: boolean;
+}
+
+export interface ChannelItem {
+  channel_title: string;
+  channel_url?: string | null;
+  channel_tags?: string | null;
+  tags: string[];
+  video_count: number;
+}
