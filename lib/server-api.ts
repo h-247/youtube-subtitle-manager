@@ -153,7 +153,7 @@ async function readWorkerPlayerResponse(html: string, videoId: string, fallback:
     clientVersion: "1.02",
     deviceMake: "Apple",
     deviceModel: "RealityDevice17,1",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    userAgent: YOUTUBE_USER_AGENT,
     osName: "visionOS",
     osVersion: "26.5.23O471",
     hl: "en",
@@ -267,7 +267,10 @@ export async function downloadEnglishCaptions(player: Record<string, any> | null
     ...translated.filter((track) => track.kind !== "asr"),
     ...translated.filter((track) => track.kind === "asr"),
   ];
-  if (!ordered.length) throw new Error("No English subtitle track is available for this video.");
+  if (!ordered.length) {
+    const trackSummary = tracks.map((track) => `${track.languageCode || "unknown"}${track.kind === "asr" ? " (auto)" : ""}${track.isTranslatable ? " (translatable)" : ""}`).join(", ") || "none";
+    throw new Error(`No English subtitle track is available for this video. YouTube tracks: ${trackSummary}.`);
+  }
 
   let lastError = "YouTube returned an empty subtitle track.";
   for (const track of ordered) {
