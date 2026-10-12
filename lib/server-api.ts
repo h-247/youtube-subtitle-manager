@@ -111,7 +111,7 @@ export function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
     const cookie = env.YOUTUBE_COOKIE?.split(/[;\r\n]+/)
       .map((part) => part.trim())
-      .filter((part) => /^[!#$%&'*+.^_`|~0-9A-Za-z_-]+=/.test(part) && !/[\u0000-\u0020\u007f]/.test(part))
+      .filter((part) => /^[!#$%&'*+.^_`|~0-9A-Za-z_-]+=/.test(part) && !/[\u0000-\u001f\u007f]/.test(part))
       .join("; ");
     if (cookie) headers.set("Cookie", cookie);
   }
