@@ -215,88 +215,195 @@ async function readInitialPlayerResponse(html: string) {
   return null;
 }
 
-type PlayerDiagnostics = { playability?: string; reason?: string };
+type PlayerDiagnostics = { playability?: string; reason?: string; attemptedClients?: string[] };
 
-async function readWorkerPlayerResponse(html: string, videoId: string, playerPageUrl: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
-  const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
-  const clientVersion = html.match(/["']INNERTUBE_CONTEXT_CLIENT_VERSION["']\s*:\s*["']([^"']+)["']/)?.[1]
-    ?? html.match(/["']clientVersion["']\s*:\s*["']([^"']+)["']/)?.[1]
-    ?? "2.20260708.00.00";
-  const visitorData = html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
-    ?? fallback?.responseContext?.visitorData;
-  if (!apiKey || !visitorData) return fallback;
+type PlayerClient = {
+  name: string;
+  id: string;
+  version: string;
+  userAgent: string;
+  extra?: Record<string, unknown>;
+};
 
-  const client = {
-    clientName: "WEB",
+const PLAYER_CLIENTS: PlayerClient[] = [
+  {
+    name: "WEB_EMBEDDED_PLAYER",
+    id: "56",
+    version: "2.20260708.00.00",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15",
+    extra: { thirdParty: { embedUrl: "https://www.youtube.com/" } },
+  },
+  {
+    name: "ANDROID",
+    id: "3",
+    version: "21.26.364",
+    userAgent: "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip",
+    extra: { androidSdkVersion: 30, osName: "Android", osVersion: "11" },
+  },
+  {
+    name: "TVHTML5",
+    id: "7",
+    version: "7.20260707.07.00",
+    userAgent: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
+  },
+];
+
+function parsePlayerConfig(html: string, fallback: Record<string, any> | null) {
+  return {
+    apiKey: html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1],
+    clientVersion: html.match(/["']INNERTUBE_CONTEXT_CLIENT_VERSION["']\s*:\s*["']([^"']+)["']/)?.[1]
+      ?? html.match(/["']clientVersion["']\s*:\s*["']([^"']+)["']/)?.[1],
+    visitorData: html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
+      ?? fallback?.responseContext?.visitorData,
+  };
+}
+
+function mergeCaptionTracks(target: Record<string, any>, source: Record<string, any> | null) {
+  const tracks = source?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  if (!Array.isArray(tracks) || !tracks.length) return;
+  const renderer = target.captions?.playerCaptionsTracklistRenderer ?? {};
+  const existing = Array.isArray(renderer.captionTracks) ? renderer.captionTracks : [];
+  const seen = new Set(existing.map((track: Record<string, any>) => `${track.languageCode || ""}|${track.vssId || ""}|${track.kind || ""}|${track.baseUrl || ""}`));
+  const merged = [...existing];
+  for (const track of tracks) {
+    const key = `${track.languageCode || ""}|${track.vssId || ""}|${track.kind || ""}|${track.baseUrl || ""}`;
+    if (!seen.has(key)) { seen.add(key); merged.push(track); }
+  }
+  target.captions = {
+    ...(target.captions ?? {}),
+    playerCaptionsTracklistRenderer: { ...renderer, ...source.captions.playerCaptionsTracklistRenderer, captionTracks: merged },
+  };
+}
+
+async function requestPlayerForClient(
+  apiKey: string,
+  visitorData: string | undefined,
+  videoId: string,
+  playerPageUrl: string,
+  client: PlayerClient,
+  clientVersion = client.version,
+) {
+  const clientContext: Record<string, unknown> = {
+    clientName: client.name,
     clientVersion,
-    userAgent: YOUTUBE_USER_AGENT,
+    userAgent: client.userAgent,
     hl: "en",
     timeZone: "UTC",
     utcOffsetMinutes: 0,
-    visitorData,
+    ...(visitorData ? { visitorData } : {}),
+    ...(client.extra ?? {}),
   };
-  try {
-    const response = await youtubeFetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": YOUTUBE_USER_AGENT,
-        Origin: "https://www.youtube.com",
-        Referer: playerPageUrl,
-        "X-YouTube-Client-Name": "1",
-        "X-YouTube-Client-Version": clientVersion,
-        "X-Goog-Visitor-Id": visitorData,
-      },
-      body: JSON.stringify({
-        context: { client },
-        videoId,
-        playbackContext: { contentPlaybackContext: { html5Preference: "HTML5_PREF_WANTS" } },
-        contentCheckOk: true,
-        racyCheckOk: true,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) return fallback;
-    const player = await response.json() as Record<string, any>;
-    diagnostics.playability = String(player.playabilityStatus?.status || "unknown");
-    const reason = player.playabilityStatus?.reason;
-    diagnostics.reason = typeof reason === "string" ? reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240) : undefined;
-    if (player.playabilityStatus?.status !== "OK") return fallback;
-    const playerTracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    const fallbackTracks = fallback?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    const playerHasTranslations = Array.isArray(playerTracks) && playerTracks.some((track: Record<string, unknown>) => track.isTranslatable === true);
-    const fallbackHasTranslations = Array.isArray(fallbackTracks) && fallbackTracks.some((track: Record<string, unknown>) => track.isTranslatable === true);
-    if ((!Array.isArray(playerTracks) || playerTracks.length === 0 || (!playerHasTranslations && fallbackHasTranslations)) && Array.isArray(fallbackTracks) && fallbackTracks.length > 0) {
-      player.captions = fallback?.captions;
+  const response = await youtubeFetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": client.userAgent,
+      Origin: "https://www.youtube.com",
+      Referer: playerPageUrl,
+      "X-YouTube-Client-Name": client.id,
+      "X-YouTube-Client-Version": clientVersion,
+      ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
+    },
+    body: JSON.stringify({
+      context: { client: clientContext },
+      videoId,
+      playbackContext: { contentPlaybackContext: { html5Preference: "HTML5_PREF_WANTS" } },
+      contentCheckOk: true,
+      racyCheckOk: true,
+    }),
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!response.ok) throw new Error(`YouTube player request failed (${response.status}).`);
+  return await response.json() as Record<string, any>;
+}
+
+async function readWorkerPlayerResponse(
+  html: string,
+  videoId: string,
+  playerPageUrl: string,
+  fallback: Record<string, any> | null,
+  diagnostics: PlayerDiagnostics,
+  alternateHtml = "",
+) {
+  const config = parsePlayerConfig(html, fallback);
+  const alternateConfig = parsePlayerConfig(alternateHtml, null);
+  const apiKey = config.apiKey || alternateConfig.apiKey;
+  const visitorData = config.visitorData || alternateConfig.visitorData;
+  const webVersion = config.clientVersion || alternateConfig.clientVersion || "2.20260708.00.00";
+  const merged = fallback ? structuredClone(fallback) : {};
+  if (!apiKey) return fallback;
+
+  const clients: PlayerClient[] = [
+    { name: "WEB", id: "1", version: webVersion, userAgent: YOUTUBE_USER_AGENT },
+    ...PLAYER_CLIENTS,
+  ];
+  const run = async (client: PlayerClient) => {
+    diagnostics.attemptedClients = [...(diagnostics.attemptedClients ?? []), client.name];
+    try {
+      return await requestPlayerForClient(apiKey, visitorData, videoId, playerPageUrl, client, client.version);
+    } catch {
+      return null;
     }
-    return player;
-  } catch {
-    return fallback;
+  };
+
+  // Try the client configuration extracted from YouTube first. Only fan out to
+  // compatible public player clients when that response has no caption tracks.
+  const webPlayer = await run(clients[0]);
+  if (webPlayer) {
+    const status = String(webPlayer.playabilityStatus?.status || "unknown");
+    diagnostics.playability = status;
+    const reason = webPlayer.playabilityStatus?.reason;
+    diagnostics.reason = typeof reason === "string" ? reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240) : undefined;
+    mergeCaptionTracks(merged, webPlayer);
+    if (webPlayer.videoDetails) merged.videoDetails = webPlayer.videoDetails;
   }
+  const existingTracks = merged.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  const hasEnglishOrTranslatableTrack = Array.isArray(existingTracks) && existingTracks.some((track: Record<string, unknown>) =>
+    /^en(?:[-_]|$)/i.test(String(track.languageCode || "")) || track.isTranslatable === true,
+  );
+  if (!hasEnglishOrTranslatableTrack) {
+    const alternates = await Promise.all(clients.slice(1).map(run));
+    for (const player of alternates) {
+      if (!player) continue;
+      const status = String(player.playabilityStatus?.status || "unknown");
+      if (status === "OK" && diagnostics.playability !== "OK") diagnostics.playability = status;
+      const reason = player.playabilityStatus?.reason;
+      if (status !== "OK" && typeof reason === "string") diagnostics.reason = reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
+      mergeCaptionTracks(merged, player);
+      if (!merged.videoDetails && player.videoDetails) merged.videoDetails = player.videoDetails;
+    }
+  }
+  return Object.keys(merged).length ? merged : fallback;
 }
 
 export async function getMetadata(videoId: string): Promise<{ metadata: Metadata; player: Record<string, any> | null }> {
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
-  const playerPageUrl = `https://www.youtube.com/embed/${videoId}?hl=en&cc_load_policy=1`;
-  const [oembed, page] = await Promise.all([
+  const embedPageUrl = `https://www.youtube.com/embed/${videoId}?hl=en&cc_load_policy=1`;
+  const [oembed, embedPage, watchPage] = await Promise.all([
     youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }),
-    youtubeFetch(playerPageUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }),
+    youtubeFetch(embedPageUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }).catch(() => null),
+    youtubeFetch(videoUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }).catch(() => null),
   ]);
   if (!oembed.ok) throw new Error(oembed.status === 404 ? "YouTube video was not found or is private." : `YouTube metadata request failed (${oembed.status}).`);
   const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
-  const html = page.ok ? await page.text() : "";
-  const initialPlayer = await readInitialPlayerResponse(html);
+  const embedHtml = embedPage?.ok ? await embedPage.text() : "";
+  const watchHtml = watchPage?.ok ? await watchPage.text() : "";
+  const initialPlayers = [readInitialPlayerResponse(embedHtml), readInitialPlayerResponse(watchHtml)].filter(Boolean) as Record<string, any>[];
+  const initialPlayer = initialPlayers.find((candidate) => candidate.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length) ?? initialPlayers[0] ?? null;
   const diagnostics: PlayerDiagnostics = {};
-  const player = await readWorkerPlayerResponse(html, videoId, playerPageUrl, initialPlayer, diagnostics);
+  const primaryHtml = embedHtml || watchHtml;
+  const primaryPageUrl = embedHtml ? embedPageUrl : videoUrl;
+  const player = await readWorkerPlayerResponse(primaryHtml, videoId, primaryPageUrl, initialPlayer, diagnostics, embedHtml && watchHtml ? watchHtml : "");
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   if (!playerTrackCount) {
     if (diagnostics.playability === "LOGIN_REQUIRED") {
       const cookieCount = parseYoutubeCookie(env.YOUTUBE_COOKIE).length;
       if (!cookieCount) throw new Error("Sites found no usable YouTube cookie entries. Store the browser cookie export as JSON or a Cookie header in YOUTUBE_COOKIE.");
       const reason = diagnostics.reason ? ` YouTube response: ${diagnostics.reason}` : "";
-      throw new Error(`YouTube rejected the configured sign-in session from Sites after ${cookieCount} cookie entries were parsed.${reason}`);
+      const clients = diagnostics.attemptedClients?.join(", ") || "WEB";
+      throw new Error(`YouTube returned no captions for the ${clients} player clients. The configured session parsed (${cookieCount} cookies), but the Sites request was not accepted.${reason}`);
     }
-    throw new Error("YouTube did not return caption tracks. Check the cookie session or use another backend runtime.");
+    throw new Error(`YouTube did not return caption tracks after trying ${diagnostics.attemptedClients?.join(", ") || "the player API"}. Check video availability or the Sites runtime response.`);
   }
   const duration = Number(player?.videoDetails?.lengthSeconds);
   return {
