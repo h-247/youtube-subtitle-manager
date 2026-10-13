@@ -1,0 +1,28 @@
+name: Probe YouTube subtitles
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: YouTube video ID to probe
+        required: true
+        default: shvyD_-yy-U
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VIDEO_ID: ${{ inputs.video_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install current yt-dlp
+        run: python -m pip install --upgrade 'yt-dlp[default]'
+      - name: Try English manual and auto captions without cookies
+        run: python scripts/probe_youtube_subtitles.py
