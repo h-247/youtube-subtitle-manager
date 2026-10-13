@@ -5,5 +5,7 @@ declare namespace Cloudflare {
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
     GOOGLE_TOKEN_ENCRYPTION_KEY?: string;
+    SUBTITLE_BACKEND_URL?: string;
+    SUBTITLE_BACKEND_TOKEN?: string;
   }
 }

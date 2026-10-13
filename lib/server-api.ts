@@ -542,12 +542,48 @@ export async function retryVideo(videoId: number, userId: string) {
 
   const attempt = retryCount + 1;
   try {
-    const { metadata, player } = await getMetadata(existing.video_id);
-    const result = await downloadEnglishCaptions(player);
+    const subtitleBackendUrl = env.SUBTITLE_BACKEND_URL?.trim().replace(/\/+$/, "");
+    const subtitleBackendToken = env.SUBTITLE_BACKEND_TOKEN?.trim();
+    let metadata: Metadata | null = null;
+    let result: { subtitle: string; type: string; language: string };
+    if (subtitleBackendUrl && subtitleBackendToken) {
+      const response = await fetch(`${subtitleBackendUrl}/api/sites/subtitle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${subtitleBackendToken}`,
+        },
+        body: JSON.stringify({
+          video_id: existing.video_id,
+          youtube_url: existing.youtube_url,
+        }),
+        signal: AbortSignal.timeout(150_000),
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        detail?: string;
+        subtitle_text?: string;
+        subtitle_type?: string;
+        subtitle_language?: string;
+      };
+      if (!response.ok) throw new Error(payload.detail || `Subtitle backend request failed (${response.status}).`);
+      if (typeof payload.subtitle_text !== "string" || !payload.subtitle_text.trim()) {
+        throw new Error("Subtitle backend returned an empty subtitle track.");
+      }
+      result = {
+        subtitle: payload.subtitle_text,
+        type: payload.subtitle_type || "AUTO",
+        language: payload.subtitle_language || "en",
+      };
+    } else {
+      const extracted = await getMetadata(existing.video_id);
+      metadata = extracted.metadata;
+      result = await downloadEnglishCaptions(extracted.player);
+    }
     const finished = new Date().toISOString();
     await db.prepare(
       "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING'"
-    ).bind(result.type, result.language, result.subtitle, metadata.channelTitle, metadata.channelUrl, metadata.duration, metadata.thumbnailUrl, finished, videoId, userId).run();
+    ).bind(result.type, result.language, result.subtitle, metadata?.channelTitle ?? null, metadata?.channelUrl ?? null, metadata?.duration ?? null, metadata?.thumbnailUrl ?? null, finished, videoId, userId).run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Subtitle download failed.";
     const failedAt = new Date().toISOString();
