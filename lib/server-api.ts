@@ -366,6 +366,10 @@ async function readWorkerPlayerResponse(
     );
   };
 
+  // The watch or embed page can already contain signed caption URLs. Keep
+  // those URLs instead of making another player request that may be challenged.
+  if (hasUsableTracks()) return merged;
+
   // Prefer the configured session. If YouTube rejects it, request the public
   // video with client-specific headers and no account cookies.
   collect([await run(webClient, true)]);
@@ -382,22 +386,29 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
   const embedPageUrl = `https://www.youtube.com/embed/${videoId}?hl=en&cc_load_policy=1`;
   const [oembed, embedPage, watchPage] = await Promise.all([
-    youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }),
+    youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(videoUrl)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null),
     youtubeFetch(embedPageUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }).catch(() => null),
     youtubeFetch(videoUrl, { headers: { "Accept-Language": "en-US,en;q=0.9", Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(15000) }).catch(() => null),
   ]);
-  if (!oembed.ok) throw new Error(oembed.status === 404 ? "YouTube video was not found or is private." : `YouTube metadata request failed (${oembed.status}).`);
-  const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
+  const info = oembed?.ok
+    ? await oembed.json().catch(() => ({})) as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string }
+    : {} as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
   const embedHtml = embedPage?.ok ? await embedPage.text() : "";
   const watchHtml = watchPage?.ok ? await watchPage.text() : "";
   const initialPlayers = [readInitialPlayerResponse(embedHtml), readInitialPlayerResponse(watchHtml)]
     .filter((candidate): candidate is Record<string, any> => candidate !== null);
-  const initialPlayer = initialPlayers.find((candidate) => candidate.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length) ?? initialPlayers[0] ?? null;
+  const initialPlayer = initialPlayers[0] ? { ...initialPlayers[0] } : null;
+  if (initialPlayer) {
+    for (const candidate of initialPlayers.slice(1)) mergeCaptionTracks(initialPlayer, candidate);
+  }
   const diagnostics: PlayerDiagnostics = {};
   const primaryHtml = embedHtml || watchHtml;
   const primaryPageUrl = embedHtml ? embedPageUrl : videoUrl;
   const player = await readWorkerPlayerResponse(primaryHtml, videoId, primaryPageUrl, initialPlayer, diagnostics, embedHtml && watchHtml ? watchHtml : "");
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
+  if (!playerTrackCount && !oembed?.ok && !embedHtml && !watchHtml) {
+    throw new Error(oembed?.status === 404 ? "YouTube video was not found or is private." : "YouTube did not provide video metadata or captions to the Sites Worker.");
+  }
   if (!playerTrackCount) {
     if (diagnostics.playability === "LOGIN_REQUIRED") {
       const cookieCount = parseYoutubeCookie(env.YOUTUBE_COOKIE).length;
@@ -486,9 +497,15 @@ export async function downloadEnglishCaptions(player: Record<string, any> | null
     for (const format of ["json3", "srv3", "vtt"]) {
       try {
         const url = new URL(track.baseUrl);
-        url.searchParams.set("key", "yt8");
-        url.searchParams.set("lang", track.translatedFrom || track.languageCode || "en");
-        if (track.translated) url.searchParams.set("tlang", "en");
+        if (url.protocol !== "https:" || !/^(?:[a-z0-9-]+\.)*youtube\.com$/i.test(url.hostname)) {
+          throw new Error("YouTube supplied an invalid caption URL.");
+        }
+        // Preserve the track's signed URL and source language. yt-dlp removes
+        // xosf because it adds positioning data to caption formats.
+        url.searchParams.delete("xosf");
+        if (track.translated && !/^en(?:[-_]|$)/i.test(track.translatedFrom || "")) {
+          url.searchParams.set("tlang", "en");
+        }
         url.searchParams.set("fmt", format);
         const response = await youtubeFetch(url, { headers: { Referer: "https://www.youtube.com/" }, signal: AbortSignal.timeout(12000) });
         if (response.status === 429) throw new Error("YouTube rate limited caption download (HTTP 429).");
