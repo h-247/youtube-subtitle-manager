@@ -192,7 +192,7 @@ export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit =
   return fetch(input, { ...init, headers });
 }
 
-async function readInitialPlayerResponse(html: string) {
+function readInitialPlayerResponse(html: string): Record<string, any> | null {
   const marker = /ytInitialPlayerResponse\s*=\s*/.exec(html);
   if (!marker) return null;
   const jsonStart = marker.index + marker[0].length;
@@ -331,7 +331,7 @@ async function readWorkerPlayerResponse(
   const apiKey = config.apiKey || alternateConfig.apiKey;
   const visitorData = config.visitorData || alternateConfig.visitorData;
   const webVersion = config.clientVersion || alternateConfig.clientVersion || "2.20260708.00.00";
-  const merged = fallback ? structuredClone(fallback) : {};
+  const merged = fallback ? { ...fallback } : {};
   if (!apiKey) return fallback;
 
   const clients: PlayerClient[] = [
@@ -389,7 +389,8 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   const info = await oembed.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
   const embedHtml = embedPage?.ok ? await embedPage.text() : "";
   const watchHtml = watchPage?.ok ? await watchPage.text() : "";
-  const initialPlayers = [readInitialPlayerResponse(embedHtml), readInitialPlayerResponse(watchHtml)].filter(Boolean) as Record<string, any>[];
+  const initialPlayers = [readInitialPlayerResponse(embedHtml), readInitialPlayerResponse(watchHtml)]
+    .filter((candidate): candidate is Record<string, any> => candidate !== null);
   const initialPlayer = initialPlayers.find((candidate) => candidate.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length) ?? initialPlayers[0] ?? null;
   const diagnostics: PlayerDiagnostics = {};
   const primaryHtml = embedHtml || watchHtml;
