@@ -103,16 +103,62 @@ type Metadata = { title: string; channelTitle: string | null; channelUrl: string
 
 const YOUTUBE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+function parseYoutubeCookie(value: string | undefined) {
+  const raw = value?.trim();
+  if (!raw) return [] as Array<[string, string]>;
+
+  const cookies = new Map<string, string>();
+  const add = (name: unknown, cookieValue: unknown, domain?: unknown) => {
+    if (typeof name !== "string" || typeof cookieValue !== "string") return;
+    if (typeof domain === "string") {
+      const normalizedDomain = domain.replace(/^\./, "").toLowerCase();
+      if (normalizedDomain !== "youtube.com" && !normalizedDomain.endsWith(".youtube.com")) return;
+    }
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z_-]+$/.test(name) || /[\u0000-\u001f\u007f;]/.test(cookieValue)) return;
+    cookies.set(name, cookieValue);
+  };
+
+  if (raw.startsWith("[") || raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const entries = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && Array.isArray((parsed as { cookies?: unknown }).cookies)
+          ? (parsed as { cookies: unknown[] }).cookies
+          : [];
+      for (const entry of entries) {
+        if (!entry || typeof entry !== "object") continue;
+        const cookie = entry as { name?: unknown; value?: unknown; domain?: unknown };
+        add(cookie.name, cookie.value, cookie.domain);
+      }
+      return [...cookies.entries()];
+    } catch {
+      return [];
+    }
+  }
+
+  for (const line of raw.split(/[\r\n]+/)) {
+    const columns = line.split("\t");
+    if (columns.length >= 7) {
+      const domain = columns[0].replace(/^#HttpOnly_/, "");
+      add(columns[5], columns.slice(6).join("\t"), domain);
+      continue;
+    }
+    for (const part of line.split(";")) {
+      const separator = part.indexOf("=");
+      if (separator > 0) add(part.slice(0, separator).trim(), part.slice(separator + 1).trim());
+    }
+  }
+  return [...cookies.entries()];
+}
+
 export function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const requestUrl = input instanceof Request ? input.url : String(input);
   const host = new URL(requestUrl).hostname.toLowerCase();
   const headers = new Headers(init.headers);
   headers.set("User-Agent", YOUTUBE_USER_AGENT);
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
-    const cookie = env.YOUTUBE_COOKIE?.split(/[;\r\n]+/)
-      .map((part) => part.trim())
-      .filter((part) => /^[!#$%&'*+.^_`|~0-9A-Za-z_-]+=/.test(part) && !/[\u0000-\u001f\u007f]/.test(part))
-      .join("; ");
+    const cookie = parseYoutubeCookie(env.YOUTUBE_COOKIE).map(([name, value]) => `${name}=${value}`).join("; ");
     if (cookie) headers.set("Cookie", cookie);
   }
   return fetch(input, { ...init, headers });
@@ -216,7 +262,9 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   const playerTrackCount = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0;
   if (!playerTrackCount) {
     if (diagnostics.playability === "LOGIN_REQUIRED") {
-      throw new Error("YouTube rejected the configured sign-in session from Sites. Use the original backend or another hosting runtime YouTube accepts.");
+      const cookieCount = parseYoutubeCookie(env.YOUTUBE_COOKIE).length;
+      if (!cookieCount) throw new Error("Sites found no usable YouTube cookie entries. Store the browser cookie export as JSON or a Cookie header in YOUTUBE_COOKIE.");
+      throw new Error(`YouTube rejected the configured sign-in session from Sites after ${cookieCount} cookie entries were parsed. The Sites runtime may not be accepted by YouTube for this account.`);
     }
     throw new Error("YouTube did not return caption tracks. Check the cookie session or use another backend runtime.");
   }
