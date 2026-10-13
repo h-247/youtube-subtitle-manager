@@ -7,6 +7,13 @@ on:
         description: YouTube video ID to probe
         required: true
         default: shvyD_-yy-U
+      player_client:
+        description: yt-dlp YouTube player client
+        type: choice
+        options:
+          - default
+          - web_embedded
+        default: default
 
 permissions:
   contents: read
@@ -17,6 +24,7 @@ jobs:
     timeout-minutes: 10
     env:
       VIDEO_ID: ${{ inputs.video_id }}
+      PLAYER_CLIENT: ${{ inputs.player_client }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

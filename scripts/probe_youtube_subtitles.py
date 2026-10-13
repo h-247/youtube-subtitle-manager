@@ -12,6 +12,9 @@ from yt_dlp import YoutubeDL
 video_id = os.environ.get("VIDEO_ID", "").strip()
 if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
     raise SystemExit("VIDEO_ID must be an 11-character YouTube video ID.")
+player_client = os.environ.get("PLAYER_CLIENT", "default").strip()
+if player_client not in {"default", "web_embedded"}:
+    raise SystemExit("Unsupported YouTube player client.")
 
 with TemporaryDirectory() as temporary_directory:
     output_dir = Path(temporary_directory)
@@ -28,7 +31,9 @@ with TemporaryDirectory() as temporary_directory:
         "socket_timeout": 20,
         "noprogress": True,
     }
-    print(f"Probing English captions for video {video_id} on GitHub Actions.", flush=True)
+    if player_client != "default":
+        options["extractor_args"] = {"youtube": {"player_client": [player_client]}}
+    print(f"Probing English captions for video {video_id} with {player_client} on GitHub Actions.", flush=True)
     try:
         with YoutubeDL(options) as downloader:
             info = downloader.extract_info(
