@@ -173,15 +173,21 @@ async function youtubeSapisidAuthorization(cookies: Array<[string, string]>) {
 
 export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const requestUrl = input instanceof Request ? input.url : String(input);
-  const host = new URL(requestUrl).hostname.toLowerCase();
+  const parsedUrl = new URL(requestUrl);
+  const host = parsedUrl.hostname.toLowerCase();
   const headers = new Headers(init.headers);
   headers.set("User-Agent", YOUTUBE_USER_AGENT);
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
     const cookies = parseYoutubeCookie(env.YOUTUBE_COOKIE);
     const cookie = cookies.map(([name, value]) => `${name}=${value}`).join("; ");
     if (cookie) headers.set("Cookie", cookie);
-    const authorization = await youtubeSapisidAuthorization(cookies);
-    if (authorization) headers.set("Authorization", authorization);
+    if (parsedUrl.pathname.startsWith("/youtubei/")) {
+      const authorization = await youtubeSapisidAuthorization(cookies);
+      if (authorization) {
+        headers.set("Authorization", authorization);
+        headers.set("X-Origin", "https://www.youtube.com");
+      }
+    }
   }
   return fetch(input, { ...init, headers });
 }
