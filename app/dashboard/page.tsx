@@ -30,6 +30,7 @@ import {
   Plus,
   X,
   Loader2,
+  Upload,
 } from "lucide-react";
 
 type IngestionNoticeKind = "running" | "success" | "partial-failure" | "error";
@@ -72,6 +73,7 @@ function DashboardContent() {
   const [ingestionNotices, setIngestionNotices] = useState<IngestionNotice[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedDriveId, setCopiedDriveId] = useState<number | null>(null);
+  const [uploadingCaptionId, setUploadingCaptionId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -258,6 +260,23 @@ function DashboardContent() {
     } catch (err) {
       console.error("Failed to copy link:", err);
       setToastMessage("Failed to copy link to clipboard.");
+    }
+  };
+
+  const handleImportCaptions = async (video: Video, file: File) => {
+    if (file.size > 2_000_000) {
+      setToastMessage("Caption file must be 2 MB or smaller.");
+      return;
+    }
+    setUploadingCaptionId(video.id);
+    try {
+      await api.videos.importCaptions(video.id, file);
+      setToastMessage("English captions imported. SRT and Drive sync are ready.");
+      await loadVideos(true);
+    } catch (error) {
+      setToastMessage(error instanceof Error ? error.message : "Could not import captions.");
+    } finally {
+      setUploadingCaptionId(null);
     }
   };
 
@@ -785,6 +804,23 @@ function DashboardContent() {
                         <FileText className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Download SRT</span>
                       </a>
+                    )}
+                    {video.status !== "COMPLETED" && (
+                      <label className={`flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition ${uploadingCaptionId === video.id ? "opacity-60 pointer-events-none" : "cursor-pointer"}`} title="Import an English VTT or SRT caption file">
+                        {uploadingCaptionId === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        <span>{uploadingCaptionId === video.id ? "Importing…" : "Import VTT/SRT"}</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          accept=".vtt,.srt,text/vtt,application/x-subrip"
+                          disabled={uploadingCaptionId === video.id}
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = "";
+                            if (file) void handleImportCaptions(video, file);
+                          }}
+                        />
+                      </label>
                     )}
                     {/* Google Drive Link & Copy */}
                     {video.drive_file_url ? (

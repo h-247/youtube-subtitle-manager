@@ -8,7 +8,7 @@ export interface User {
 
 export type WatchStatus = "TO_DO" | "DOING" | "DONE";
 export type VideoStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "NO_SUBTITLES" | "FAILED";
-export type SubtitleType = "MANUAL" | "AUTO" | "NONE";
+export type SubtitleType = "MANUAL" | "AUTO" | "IMPORTED" | "NONE";
 
 export interface Video {
   id: number;

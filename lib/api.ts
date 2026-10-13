@@ -92,6 +92,13 @@ export const api = {
       return request<Video>(`/videos/${id}`);
     },
 
+    async importCaptions(id: number, file: File): Promise<{ message: string }> {
+      return request<{ message: string }>(`/videos/${id}/captions`, {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, content: await file.text() }),
+      });
+    },
+
     async update(
       id: number,
       data: {

@@ -9,6 +9,7 @@ This version runs as a Vinext application on the Sites Worker runtime. It replac
 - Video and Short ingestion; playlist ingestion adds up to 20 videos from the public playlist page
 - English caption selection, preferring manual captions and falling back to auto captions
 - SRT downloads, watch-status edits, ChatGPT links, channel tags, and record deletion
+- Import an English VTT or SRT file into a video that YouTube blocks from the Sites Worker; the imported captions are converted to SRT and can sync to Google Drive
 - Unlimited retries with capped exponential delay while the library is open; an in-flight record resumes when the dashboard is opened again
 
 ## Sites storage and API
@@ -16,6 +17,7 @@ This version runs as a Vinext application on the Sites Worker runtime. It replac
 Sites provisions the `DB` D1 binding from `.openai/hosting.json`. The Drizzle schema and generated SQL migration are in `db/schema.ts` and `drizzle/`. API routes live under `app/api/`.
 
 YouTube captions are retrieved through YouTube's public player and timed-text HTTP endpoints. Workers do not run `yt-dlp` or a persistent Python worker; caption retries are driven by dashboard requests and pause while no dashboard is open.
+YouTube may challenge requests from the Sites Worker even when the configured session works on a local machine. In that case, import a VTT or SRT file from the affected video row. The automatic downloader continues to retry until captions are imported or retrieved.
 
 Google Drive uses the OAuth authorization-code flow and the least-privilege `drive.file` scope. Set these production Site secrets before users connect: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_TOKEN_ENCRYPTION_KEY` (a base64url-encoded random 32-byte key). Register `https://youtube-subtitle-manager.h-247.chatgpt.site/api/drive/callback` as an authorized redirect URI in the Google OAuth client and enable the Google Drive API. Per-user access and refresh tokens are encrypted with AES-GCM before they are stored in D1. Completed SRT files are uploaded into a `YouTube Subtitles` folder; connected users' completed files, including existing files, are synced one at a time as the dashboard refreshes, with uncapped retries and exponential backoff while the dashboard is active. Direct SRT downloads remain available.
 

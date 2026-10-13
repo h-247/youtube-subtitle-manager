@@ -435,7 +435,7 @@ function timestamp(milliseconds: number) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
 }
 
-function toSrt(content: string) {
+export function toSrt(content: string) {
   try {
     const data = JSON.parse(content) as { events?: Array<{ tStartMs?: number; dDurationMs?: number; segs?: Array<{ utf8?: string }> }> };
     const events = (data.events ?? []).flatMap((event) => {
@@ -457,7 +457,7 @@ function toSrt(content: string) {
 
   const vttEvents = [...content.matchAll(/(\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}\.\d{3})[^\n]*\n([\s\S]*?)(?=\n\s*\n|$)/g)];
   return vttEvents.map((match, index) => {
-    const convert = (time: string) => `${time.slice(0, 12)},${time.slice(12)}`;
+    const convert = (time: string) => time.replace(".", ",");
     return `${index + 1}\n${convert(match[1])} --> ${convert(match[2])}\n${xmlDecode(match[3])}`;
   }).join("\n\n");
 }
@@ -526,13 +526,13 @@ export async function retryVideo(videoId: number, userId: string) {
     const result = await downloadEnglishCaptions(player);
     const finished = new Date().toISOString();
     await db.prepare(
-      "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+      "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING'"
     ).bind(result.type, result.language, result.subtitle, metadata.channelTitle, metadata.channelUrl, metadata.duration, metadata.thumbnailUrl, finished, videoId, userId).run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Subtitle download failed.";
     const failedAt = new Date().toISOString();
     await db.prepare(
-      "UPDATE videos SET progress_message = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+      "UPDATE videos SET progress_message = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING'"
     ).bind(`Retry #${attempt}: ${message}`, message, failedAt, videoId, userId).run();
   }
 }
