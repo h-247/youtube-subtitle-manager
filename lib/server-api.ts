@@ -152,14 +152,36 @@ function parseYoutubeCookie(value: string | undefined) {
   return [...cookies.entries()];
 }
 
-export function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+async function youtubeSapisidAuthorization(cookies: Array<[string, string]>) {
+  const jar = new Map(cookies);
+  const sources: Array<[string, string | undefined]> = [
+    ["SAPISIDHASH", jar.get("SAPISID") || jar.get("__Secure-3PAPISID")],
+    ["SAPISID1PHASH", jar.get("__Secure-1PAPISID")],
+    ["SAPISID3PHASH", jar.get("__Secure-3PAPISID")],
+  ];
+  const timestamp = String(Math.round(Date.now() / 1000));
+  const origin = "https://www.youtube.com";
+  const authorization: string[] = [];
+  for (const [scheme, sid] of sources) {
+    if (!sid) continue;
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`${timestamp} ${sid} ${origin}`));
+    const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    authorization.push(`${scheme} ${timestamp}_${hash}`);
+  }
+  return authorization.join(" ");
+}
+
+export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const requestUrl = input instanceof Request ? input.url : String(input);
   const host = new URL(requestUrl).hostname.toLowerCase();
   const headers = new Headers(init.headers);
   headers.set("User-Agent", YOUTUBE_USER_AGENT);
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
-    const cookie = parseYoutubeCookie(env.YOUTUBE_COOKIE).map(([name, value]) => `${name}=${value}`).join("; ");
+    const cookies = parseYoutubeCookie(env.YOUTUBE_COOKIE);
+    const cookie = cookies.map(([name, value]) => `${name}=${value}`).join("; ");
     if (cookie) headers.set("Cookie", cookie);
+    const authorization = await youtubeSapisidAuthorization(cookies);
+    if (authorization) headers.set("Authorization", authorization);
   }
   return fetch(input, { ...init, headers });
 }
