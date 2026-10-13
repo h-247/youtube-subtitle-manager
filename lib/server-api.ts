@@ -215,7 +215,7 @@ async function readInitialPlayerResponse(html: string) {
   return null;
 }
 
-type PlayerDiagnostics = { playability?: string };
+type PlayerDiagnostics = { playability?: string; reason?: string };
 
 async function readWorkerPlayerResponse(html: string, videoId: string, playerPageUrl: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
   const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
@@ -259,6 +259,8 @@ async function readWorkerPlayerResponse(html: string, videoId: string, playerPag
     if (!response.ok) return fallback;
     const player = await response.json() as Record<string, any>;
     diagnostics.playability = String(player.playabilityStatus?.status || "unknown");
+    const reason = player.playabilityStatus?.reason;
+    diagnostics.reason = typeof reason === "string" ? reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240) : undefined;
     if (player.playabilityStatus?.status !== "OK") return fallback;
     const playerTracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     const fallbackTracks = fallback?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -291,7 +293,8 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
     if (diagnostics.playability === "LOGIN_REQUIRED") {
       const cookieCount = parseYoutubeCookie(env.YOUTUBE_COOKIE).length;
       if (!cookieCount) throw new Error("Sites found no usable YouTube cookie entries. Store the browser cookie export as JSON or a Cookie header in YOUTUBE_COOKIE.");
-      throw new Error(`YouTube rejected the configured sign-in session from Sites after ${cookieCount} cookie entries were parsed. The Sites runtime may not be accepted by YouTube for this account.`);
+      const reason = diagnostics.reason ? ` YouTube response: ${diagnostics.reason}` : "";
+      throw new Error(`YouTube rejected the configured sign-in session from Sites after ${cookieCount} cookie entries were parsed.${reason}`);
     }
     throw new Error("YouTube did not return caption tracks. Check the cookie session or use another backend runtime.");
   }
