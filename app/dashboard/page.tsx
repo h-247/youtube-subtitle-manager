@@ -41,6 +41,9 @@ type IngestionNotice = {
   message: string;
 };
 
+const requiresYouTubeVerification = (video: Video) =>
+  /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(video.error_message || "");
+
 function DashboardContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -749,10 +752,10 @@ function DashboardContent() {
                           )}`}
                           title="Subtitle download status"
                         >
-                          {video.status === "PROCESSING" && (
+                          {video.status === "PROCESSING" && !requiresYouTubeVerification(video) && (
                             <RotateCw className="w-2.5 h-2.5 animate-spin mr-1 inline-block" />
                           )}
-                          <span>{video.status === "COMPLETED" ? "Subtitles Ready" : video.status}</span>
+                          <span>{video.status === "COMPLETED" ? "Subtitles Ready" : video.status === "PROCESSING" && requiresYouTubeVerification(video) ? "Waiting on YouTube" : video.status}</span>
                         </span>
 
                         {/* Retry counter badge */}
@@ -763,7 +766,12 @@ function DashboardContent() {
                         )}
 
                         {/* Progress or retry message */}
-                        {video.status === "PROCESSING" && (video.progress_message || video.error_message) && (
+                        {video.status === "PROCESSING" && requiresYouTubeVerification(video) && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-950/40 border border-amber-800/50 text-amber-200 text-[10px] font-medium" title={video.error_message || undefined}>
+                            YouTube verification required. Try Import VTT/SRT; automatic retry continues later.
+                          </span>
+                        )}
+                        {video.status === "PROCESSING" && !requiresYouTubeVerification(video) && (video.progress_message || video.error_message) && (
                           <span
                             className="px-2 py-0.5 rounded-full bg-blue-950/30 border border-blue-800/40 text-blue-300 text-[10px] truncate max-w-sm"
                             title={video.progress_message || video.error_message || undefined}

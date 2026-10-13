@@ -415,7 +415,7 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
       if (!cookieCount) throw new Error("Sites found no usable YouTube cookie entries. Store the browser cookie export as JSON or a Cookie header in YOUTUBE_COOKIE.");
       const reason = diagnostics.reason ? ` YouTube response: ${diagnostics.reason}` : "";
       const clients = diagnostics.attemptedClients?.join(", ") || "WEB";
-      throw new Error(`YouTube returned no captions for the ${clients} player clients. The configured session parsed (${cookieCount} cookies), but the Sites request was not accepted.${reason}`);
+      throw new Error(`YouTube verification required from Sites. No caption tracks were returned by ${clients}. The configured session parsed (${cookieCount} cookies), but YouTube did not accept this request.${reason}`);
     }
     throw new Error(`YouTube did not return caption tracks after trying ${diagnostics.attemptedClients?.join(", ") || "the player API"}. Check video availability or the Sites runtime response.`);
   }
@@ -529,7 +529,10 @@ export async function retryVideo(videoId: number, userId: string) {
   if (!existing) return;
   const retryCount = Number(existing.retry_count || 0);
   const last = existing.last_attempt_at ? Date.parse(existing.last_attempt_at) : 0;
-  const delayMs = retryCount === 0 ? 0 : Math.min(60_000, 2_000 * 2 ** Math.min(retryCount - 1, 5));
+  const verificationBlocked = /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(existing.error_message || "");
+  const delayMs = verificationBlocked
+    ? 15 * 60_000
+    : retryCount === 0 ? 0 : Math.min(60_000, 2_000 * 2 ** Math.min(retryCount - 1, 5));
   if (Date.now() - last < delayMs) return;
   const now = new Date().toISOString();
   const claim = await db.prepare(
