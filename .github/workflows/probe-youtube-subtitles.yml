@@ -35,5 +35,7 @@ jobs:
           deno-version: '2.x'
       - name: Install current yt-dlp
         run: python -m pip install --upgrade 'yt-dlp[default]'
-      - name: Try English manual and auto captions without cookies
+      - name: Try English manual and auto captions
+        env:
+          YOUTUBE_COOKIE_JSON: ${{ secrets.YOUTUBE_COOKIE_JSON }}
         run: python scripts/probe_youtube_subtitles.py
