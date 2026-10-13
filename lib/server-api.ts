@@ -171,13 +171,13 @@ async function youtubeSapisidAuthorization(cookies: Array<[string, string]>) {
   return authorization.join(" ");
 }
 
-export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit = {}, options: { useCookies?: boolean } = {}) {
   const requestUrl = input instanceof Request ? input.url : String(input);
   const parsedUrl = new URL(requestUrl);
   const host = parsedUrl.hostname.toLowerCase();
   const headers = new Headers(init.headers);
-  headers.set("User-Agent", YOUTUBE_USER_AGENT);
-  if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+  if (!headers.has("User-Agent")) headers.set("User-Agent", YOUTUBE_USER_AGENT);
+  if ((host === "youtube.com" || host.endsWith(".youtube.com")) && options.useCookies !== false) {
     const cookies = parseYoutubeCookie(env.YOUTUBE_COOKIE);
     const cookie = cookies.map(([name, value]) => `${name}=${value}`).join("; ");
     if (cookie) headers.set("Cookie", cookie);
@@ -188,6 +188,9 @@ export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit =
         headers.set("X-Origin", "https://www.youtube.com");
       }
     }
+  } else if (options.useCookies === false) {
+    headers.delete("Cookie");
+    headers.delete("Authorization");
   }
   return fetch(input, { ...init, headers });
 }
@@ -282,6 +285,7 @@ async function requestPlayerForClient(
   videoId: string,
   playerPageUrl: string,
   client: PlayerClient,
+  useCookies: boolean,
   clientVersion = client.version,
 ) {
   const clientContext: Record<string, unknown> = {
@@ -313,7 +317,7 @@ async function requestPlayerForClient(
       racyCheckOk: true,
     }),
     signal: AbortSignal.timeout(9000),
-  });
+  }, { useCookies });
   if (!response.ok) throw new Error(`YouTube player request failed (${response.status}).`);
   return await response.json() as Record<string, any>;
 }
@@ -334,45 +338,42 @@ async function readWorkerPlayerResponse(
   const merged = fallback ? { ...fallback } : {};
   if (!apiKey) return fallback;
 
-  const clients: PlayerClient[] = [
-    { name: "WEB", id: "1", version: webVersion, userAgent: YOUTUBE_USER_AGENT },
-    ...PLAYER_CLIENTS,
-  ];
-  const run = async (client: PlayerClient) => {
-    diagnostics.attemptedClients = [...(diagnostics.attemptedClients ?? []), client.name];
+  const webClient: PlayerClient = { name: "WEB", id: "1", version: webVersion, userAgent: YOUTUBE_USER_AGENT };
+  const [embeddedClient, androidClient, tvClient] = PLAYER_CLIENTS;
+  const run = async (client: PlayerClient, useCookies: boolean) => {
+    diagnostics.attemptedClients = [...(diagnostics.attemptedClients ?? []), `${client.name} ${useCookies ? "cookie" : "public"}`];
     try {
-      return await requestPlayerForClient(apiKey, visitorData, videoId, playerPageUrl, client, client.version);
+      return await requestPlayerForClient(apiKey, useCookies ? visitorData : undefined, videoId, playerPageUrl, client, useCookies, client.version);
     } catch {
       return null;
     }
   };
-
-  // Try the client configuration extracted from YouTube first. Only fan out to
-  // compatible public player clients when that response has no caption tracks.
-  const webPlayer = await run(clients[0]);
-  if (webPlayer) {
-    const status = String(webPlayer.playabilityStatus?.status || "unknown");
-    diagnostics.playability = status;
-    const reason = webPlayer.playabilityStatus?.reason;
-    diagnostics.reason = typeof reason === "string" ? reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240) : undefined;
-    mergeCaptionTracks(merged, webPlayer);
-    if (webPlayer.videoDetails) merged.videoDetails = webPlayer.videoDetails;
-  }
-  const existingTracks = merged.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-  const hasEnglishOrTranslatableTrack = Array.isArray(existingTracks) && existingTracks.some((track: Record<string, unknown>) =>
-    /^en(?:[-_]|$)/i.test(String(track.languageCode || "")) || track.isTranslatable === true,
-  );
-  if (!hasEnglishOrTranslatableTrack) {
-    const alternates = await Promise.all(clients.slice(1).map(run));
-    for (const player of alternates) {
+  const collect = (players: Array<Record<string, any> | null>) => {
+    for (const player of players) {
       if (!player) continue;
       const status = String(player.playabilityStatus?.status || "unknown");
-      if (status === "OK" && diagnostics.playability !== "OK") diagnostics.playability = status;
+      if (!diagnostics.playability || status === "OK") diagnostics.playability = status;
       const reason = player.playabilityStatus?.reason;
       if (status !== "OK" && typeof reason === "string") diagnostics.reason = reason.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
       mergeCaptionTracks(merged, player);
       if (!merged.videoDetails && player.videoDetails) merged.videoDetails = player.videoDetails;
     }
+  };
+  const hasUsableTracks = () => {
+    const tracks = merged.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    return Array.isArray(tracks) && tracks.some((track: Record<string, unknown>) =>
+      /^en(?:[-_]|$)/i.test(String(track.languageCode || "")) || track.isTranslatable === true,
+    );
+  };
+
+  // Prefer the configured session. If YouTube rejects it, request the public
+  // video with client-specific headers and no account cookies.
+  collect([await run(webClient, true)]);
+  if (!hasUsableTracks()) {
+    collect(await Promise.all([run(webClient, false), run(androidClient, false)]));
+  }
+  if (!hasUsableTracks()) {
+    collect(await Promise.all([run(embeddedClient, false), run(tvClient, false)]));
   }
   return Object.keys(merged).length ? merged : fallback;
 }
