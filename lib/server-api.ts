@@ -529,7 +529,8 @@ export async function retryVideo(videoId: number, userId: string) {
   if (!existing) return;
   const retryCount = Number(existing.retry_count || 0);
   const last = existing.last_attempt_at ? Date.parse(existing.last_attempt_at) : 0;
-  const verificationBlocked = /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(existing.error_message || "");
+  const subtitleBackendConfigured = Boolean(env.SUBTITLE_BACKEND_URL?.trim() && env.SUBTITLE_BACKEND_TOKEN?.trim());
+  const verificationBlocked = !subtitleBackendConfigured && /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(existing.error_message || "");
   const delayMs = verificationBlocked
     ? 15 * 60_000
     : retryCount === 0 ? 0 : Math.min(60_000, 2_000 * 2 ** Math.min(retryCount - 1, 5));
