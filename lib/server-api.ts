@@ -219,18 +219,17 @@ type PlayerDiagnostics = { playability?: string };
 
 async function readWorkerPlayerResponse(html: string, videoId: string, playerPageUrl: string, fallback: Record<string, any> | null, diagnostics: PlayerDiagnostics) {
   const apiKey = html.match(/["']INNERTUBE_API_KEY["']\s*:\s*["']([^"']+)["']/)?.[1];
+  const clientVersion = html.match(/["']INNERTUBE_CONTEXT_CLIENT_VERSION["']\s*:\s*["']([^"']+)["']/)?.[1]
+    ?? html.match(/["']clientVersion["']\s*:\s*["']([^"']+)["']/)?.[1]
+    ?? "2.20260708.00.00";
   const visitorData = html.match(/["']VISITOR_DATA["']\s*:\s*["']([^"']+)["']/)?.[1]
     ?? fallback?.responseContext?.visitorData;
   if (!apiKey || !visitorData) return fallback;
 
   const client = {
-    clientName: "VISIONOS",
-    clientVersion: "1.02",
-    deviceMake: "Apple",
-    deviceModel: "RealityDevice17,1",
+    clientName: "WEB",
+    clientVersion,
     userAgent: YOUTUBE_USER_AGENT,
-    osName: "visionOS",
-    osVersion: "26.5.23O471",
     hl: "en",
     timeZone: "UTC",
     utcOffsetMinutes: 0,
@@ -244,8 +243,8 @@ async function readWorkerPlayerResponse(html: string, videoId: string, playerPag
         "User-Agent": YOUTUBE_USER_AGENT,
         Origin: "https://www.youtube.com",
         Referer: playerPageUrl,
-        "X-YouTube-Client-Name": "101",
-        "X-YouTube-Client-Version": client.clientVersion,
+        "X-YouTube-Client-Name": "1",
+        "X-YouTube-Client-Version": clientVersion,
         "X-Goog-Visitor-Id": visitorData,
       },
       body: JSON.stringify({
