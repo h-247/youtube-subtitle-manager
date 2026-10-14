@@ -12,6 +12,7 @@ export const videos = sqliteTable("videos", {
   duration: integer("duration"),
   thumbnailUrl: text("thumbnail_url"),
   status: text("status").notNull().default("PROCESSING"),
+  processingSource: text("processing_source").notNull().default("SITE"),
   watchStatus: text("watch_status").notNull().default("TO_DO"),
   channelTags: text("channel_tags"),
   subtitleType: text("subtitle_type").notNull().default("NONE"),
@@ -58,3 +59,10 @@ export const driveOauthStates = sqliteTable("drive_oauth_states", {
   expiresAt: integer("expires_at").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("ix_drive_oauth_states_expiry").on(table.expiresAt)]);
+
+export const localSyncTokens = sqliteTable("local_sync_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  revokedAt: text("revoked_at"),
+}, (table) => [index("ix_local_sync_tokens_user").on(table.userId)]);

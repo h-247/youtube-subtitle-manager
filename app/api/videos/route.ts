@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   if (tag !== "ALL") { clauses.push("(lower(coalesce(channel_tags, '')) LIKE ? OR channel_title IN (SELECT channel_title FROM channel_tags WHERE user_id = ? AND lower(tag) = ?))"); binds.push(`%${tag}%`, user.userId, tag); }
   const where = clauses.join(" AND ");
 
-  const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
+  const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' AND processing_source <> 'LOCAL' ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
   if (due) await retryVideo(Number(due.id), user.userId);
 
   const totalRow = await db.prepare(`SELECT COUNT(*) AS total FROM videos WHERE ${where}`).bind(...binds).first<{ total: number }>();

@@ -15,6 +15,13 @@
       "when": 1791797246156,
       "tag": "0001_slow_krista_starr",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791975072504,
+      "tag": "0002_equal_mesmero",
+      "breakpoints": true
     }
   ]
 }

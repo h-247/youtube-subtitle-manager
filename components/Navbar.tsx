@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { DriveStatus } from "../types";
-import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Tv } from "lucide-react";
+import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Tv, Link2 } from "lucide-react";
 
 interface NavbarProps {
   onOpenIngest: () => void;
@@ -15,6 +15,21 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
   const { user, logout, refreshUser } = useAuth();
   const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [connectingDrive, setConnectingDrive] = useState(false);
+  const [pairingLocal, setPairingLocal] = useState(false);
+
+  const handlePairLocal = async () => {
+    try {
+      setPairingLocal(true);
+      const response = await fetch("/api/sync/pair", { method: "POST" });
+      const data = await response.json() as { token?: string; detail?: string };
+      if (!response.ok || !data.token) throw new Error(data.detail || "Could not create a local app pairing code.");
+      window.prompt("Copy this one-time code, then paste it into Connect Sites in your local app:", data.token);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not create a local app pairing code.");
+    } finally {
+      setPairingLocal(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -65,6 +80,10 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
         {/* Right side controls */}
         {user && (
           <div className="flex items-center space-x-3">
+            <button onClick={handlePairLocal} disabled={pairingLocal} className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5 transition" title="Pair this library with your local subtitle downloader">
+              <Link2 className="w-4 h-4 text-neutral-300" />
+              <span>{pairingLocal ? "Creating code…" : "Pair Local App"}</span>
+            </button>
             {/* Drive Connection Status */}
             {driveStatus?.is_configured ? (
               driveStatus.is_connected ? (

@@ -12,6 +12,7 @@ export type LibraryVideo = {
   duration: number | null;
   thumbnail_url: string | null;
   status: string;
+  processing_source?: string;
   watch_status: string;
   channel_tags: string | null;
   subtitle_type: string;
@@ -178,7 +179,7 @@ export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit =
   const headers = new Headers(init.headers);
   if (!headers.has("User-Agent")) headers.set("User-Agent", YOUTUBE_USER_AGENT);
   if ((host === "youtube.com" || host.endsWith(".youtube.com")) && options.useCookies !== false) {
-    const cookies = parseYoutubeCookie(env.YOUTUBE_COOKIE);
+    const cookies: Array<[string, string]> = [];
     const cookie = cookies.map(([name, value]) => `${name}=${value}`).join("; ");
     if (cookie) headers.set("Cookie", cookie);
     if (parsedUrl.pathname.startsWith("/youtubei/")) {
@@ -275,7 +276,7 @@ function mergeCaptionTracks(target: Record<string, any>, source: Record<string, 
   }
   target.captions = {
     ...(target.captions ?? {}),
-    playerCaptionsTracklistRenderer: { ...renderer, ...source.captions.playerCaptionsTracklistRenderer, captionTracks: merged },
+    playerCaptionsTracklistRenderer: { ...renderer, ...(source?.captions?.playerCaptionsTracklistRenderer ?? {}), captionTracks: merged },
   };
 }
 
@@ -411,11 +412,9 @@ export async function getMetadata(videoId: string): Promise<{ metadata: Metadata
   }
   if (!playerTrackCount) {
     if (diagnostics.playability === "LOGIN_REQUIRED") {
-      const cookieCount = parseYoutubeCookie(env.YOUTUBE_COOKIE).length;
-      if (!cookieCount) throw new Error("Sites found no usable YouTube cookie entries. Store the browser cookie export as JSON or a Cookie header in YOUTUBE_COOKIE.");
       const reason = diagnostics.reason ? ` YouTube response: ${diagnostics.reason}` : "";
       const clients = diagnostics.attemptedClients?.join(", ") || "WEB";
-      throw new Error(`YouTube verification required from Sites. No caption tracks were returned by ${clients}. The configured session parsed (${cookieCount} cookies), but YouTube did not accept this request.${reason}`);
+      throw new Error(`YouTube requires a signed-in session for this video. Download it with the paired local app.${reason}`);
     }
     throw new Error(`YouTube did not return caption tracks after trying ${diagnostics.attemptedClients?.join(", ") || "the player API"}. Check video availability or the Sites runtime response.`);
   }
