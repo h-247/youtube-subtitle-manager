@@ -19,12 +19,25 @@ export async function POST(request: Request) {
   const db = database();
   const values = fields.map((field) => field === "processing_source" ? "LOCAL" : (body[field] ?? null));
   const names = ["user_id", ...fields];
-  const updates = fields.slice(1).map((field) => `${field} = excluded.${field}`).join(", ");
+  const updates = fields.slice(1).map((field) =>
+    field === "drive_file_id" || field === "drive_file_url"
+      ? `${field} = coalesce(excluded.${field}, videos.${field})`
+      : `${field} = excluded.${field}`,
+  ).join(", ");
   await db.prepare(`INSERT INTO videos (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})
     ON CONFLICT(user_id, video_id) DO UPDATE SET ${updates}
     WHERE coalesce(excluded.updated_at, '') >= coalesce(videos.updated_at, '')`)
     .bind(userId, ...values).run();
-  const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?").bind(userId, body.video_id).first<{ id: number }>();
+  const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?")
+    .bind(userId, body.video_id).first<{ id: number }>();
   const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;
-  return json({ synced: true, id: Number(row?.id), drive_upload: driveUpload });
+  const current = await db.prepare("SELECT video_id, drive_file_id, drive_file_url FROM videos WHERE user_id = ? AND video_id = ?")
+    .bind(userId, body.video_id).first<{ video_id: string; drive_file_id: string | null; drive_file_url: string | null }>();
+  const currentLink = current?.drive_file_id && current.drive_file_url ? {
+    video_id: current.video_id, drive_file_id: current.drive_file_id, drive_file_url: current.drive_file_url,
+  } : null;
+  const driveUploads = [currentLink, driveUpload].filter((item, index, items) =>
+    item && items.findIndex((candidate) => candidate?.video_id === item.video_id) === index,
+  );
+  return json({ synced: true, id: Number(row?.id), drive_uploads: driveUploads });
 }
