@@ -5,14 +5,16 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { DriveStatus } from "../types";
 import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Tv, Link2 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 interface NavbarProps {
   onOpenIngest: () => void;
-  onOpenChannels: () => void;
 }
 
-export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
+export default function Navbar({ onOpenIngest }: NavbarProps) {
   const { user, logout, refreshUser } = useAuth();
+  const pathname = usePathname();
   const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [connectingDrive, setConnectingDrive] = useState(false);
   const [pairingLocal, setPairingLocal] = useState(false);
@@ -115,15 +117,14 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
               </div>
             )}
 
-            {/* Channels Management Button */}
-            <button
-              onClick={onOpenChannels}
-              className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 font-medium px-3.5 py-2 rounded-lg text-sm transition space-x-1.5 shadow-sm"
-              title="View and manage channels & tags"
-            >
-              <Tv className="w-4 h-4 text-neutral-400" />
-              <span>Channels</span>
-            </button>
+            <nav aria-label="Library pages" className="flex items-center gap-1 rounded-xl border border-neutral-700 bg-neutral-800 p-1">
+              <Link href="/dashboard/videos" aria-current={pathname === "/dashboard" || pathname === "/dashboard/videos" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard" || pathname === "/dashboard/videos" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
+                <Video className="h-4 w-4" /> Videos
+              </Link>
+              <Link href="/dashboard/channels" aria-current={pathname === "/dashboard/channels" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard/channels" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
+                <Tv className="h-4 w-4" /> Channels
+              </Link>
+            </nav>
 
             {/* Ingest Action Button */}
             <button

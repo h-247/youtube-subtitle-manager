@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "../../lib/auth";
 import { api } from "../../lib/api";
 import { Video } from "../../types";
 import Navbar from "../../components/Navbar";
 import IngestModal from "../../components/IngestModal";
 import EditModal from "../../components/EditModal";
-import ChannelsModal from "../../components/ChannelsModal";
 import {
   Search,
   ExternalLink,
@@ -64,7 +64,6 @@ function DashboardContent() {
 
   // Modals state
   const [isIngestOpen, setIsIngestOpen] = useState(false);
-  const [isChannelsOpen, setIsChannelsOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [taggingChannel, setTaggingChannel] = useState<{ channel_title: string; current_tags: string } | null>(null);
   const [channelSelectedTags, setChannelSelectedTags] = useState<string[]>([]);
@@ -383,7 +382,6 @@ function DashboardContent() {
     <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
       <Navbar
         onOpenIngest={() => setIsIngestOpen(true)}
-        onOpenChannels={() => setIsChannelsOpen(true)}
       />
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex-1">
@@ -493,14 +491,14 @@ function DashboardContent() {
           ) : null}
 
           {/* Shortcut to open Channels manager */}
-          <button
-            onClick={() => setIsChannelsOpen(true)}
+          <Link
+            href="/dashboard/channels"
             className="px-2.5 py-1 rounded-full text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-dashed border-neutral-700 transition flex items-center space-x-1 flex-shrink-0 ml-auto"
             title="View and manage channels & tags"
           >
             <Tv className="w-3 h-3 text-neutral-400" />
             <span>Manage Channels</span>
-          </button>
+          </Link>
         </div>
 
         {/* Toolbar: Search, Filter, Stats */}
@@ -935,21 +933,6 @@ function DashboardContent() {
         isOpen={isIngestOpen}
         onClose={() => setIsIngestOpen(false)}
         onStart={startIngestion}
-      />
-
-      {/* Channels Modal */}
-      <ChannelsModal
-        isOpen={isChannelsOpen}
-        onClose={() => setIsChannelsOpen(false)}
-        allTags={allTags}
-        onSelectTagFilter={(selectedTag) => {
-          setTagFilter(selectedTag);
-          setPage(1);
-        }}
-        onChannelsChanged={() => {
-          loadVideos();
-          loadTags();
-        }}
       />
 
       {/* Edit Modal */}
