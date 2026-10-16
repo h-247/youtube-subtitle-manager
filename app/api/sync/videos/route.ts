@@ -1,5 +1,6 @@
 import { authenticatedLocalUser } from "../../../../lib/local-sync-auth";
 import { database, errorResponse, json, type LibraryVideo } from "../../../../lib/server-api";
+import { syncOnePendingSubtitle } from "../../../../lib/drive-service";
 
 const fields = [
   "video_id", "youtube_url", "title", "channel_title", "channel_url", "duration", "thumbnail_url",
@@ -24,5 +25,6 @@ export async function POST(request: Request) {
     WHERE coalesce(excluded.updated_at, '') >= coalesce(videos.updated_at, '')`)
     .bind(userId, ...values).run();
   const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?").bind(userId, body.video_id).first<{ id: number }>();
-  return json({ synced: true, id: Number(row?.id) });
+  const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;
+  return json({ synced: true, id: Number(row?.id), drive_upload: driveUpload });
 }
