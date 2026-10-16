@@ -33,3 +33,7 @@ npm run dev
 ```
 
 The portable local preview supports the seeded test identity `seedy@sites.test` via `/signin-with-chatgpt?return_to=/dashboard`. That mock sign-in is not included in the hosted Site.
+
+## Sign in to the local downloader with this Site account
+
+On the signed-in Site, choose **Pair Local App** and copy the code. On the laptop, open the local app, choose **ChatGPT Site**, and paste the code. The local API verifies the code with this Site, links the local account to the stable Site user ID, and stores the code encrypted for outbound library sync. The Site keeps only the code hash. Generating a fresh code revokes the previous one; sign in locally again after rotating it.

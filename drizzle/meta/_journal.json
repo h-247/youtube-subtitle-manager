@@ -22,6 +22,13 @@
       "when": 1791975072504,
       "tag": "0002_equal_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792119202164,
+      "tag": "0003_illegal_ultimo",
+      "breakpoints": true
     }
   ]
 }

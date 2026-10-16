@@ -21,8 +21,8 @@ export async function POST() {
   const db = database();
   await db.prepare("UPDATE local_sync_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
     .bind(new Date().toISOString(), user.userId).run();
-  await db.prepare("INSERT INTO local_sync_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)")
-    .bind(await hashToken(token), user.userId, new Date().toISOString()).run();
+  await db.prepare("INSERT INTO local_sync_tokens (token_hash, user_id, user_email, created_at) VALUES (?, ?, ?, ?)")
+    .bind(await hashToken(token), user.userId, user.email, new Date().toISOString()).run();
   return json({ token });
 }
 

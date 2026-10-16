@@ -23,7 +23,7 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
       const response = await fetch("/api/sync/pair", { method: "POST" });
       const data = await response.json() as { token?: string; detail?: string };
       if (!response.ok || !data.token) throw new Error(data.detail || "Could not create a local app pairing code.");
-      window.prompt("Copy this one-time code, then paste it into Connect Sites in your local app:", data.token);
+      window.prompt("Copy this code, then paste it into ChatGPT Site sign-in in your local app:", data.token);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Could not create a local app pairing code.");
     } finally {

@@ -63,6 +63,7 @@ export const driveOauthStates = sqliteTable("drive_oauth_states", {
 export const localSyncTokens = sqliteTable("local_sync_tokens", {
   tokenHash: text("token_hash").primaryKey(),
   userId: text("user_id").notNull(),
+  userEmail: text("user_email"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   revokedAt: text("revoked_at"),
 }, (table) => [index("ix_local_sync_tokens_user").on(table.userId)]);
