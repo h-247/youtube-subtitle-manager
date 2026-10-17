@@ -126,9 +126,9 @@ export default function ChannelsPage() {
               </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
             </label>
             <label className="relative">
-              <span className="sr-only">Watch status</span>
-              <select aria-label="Watch status" value={progressFilter} onChange={(event) => setProgressFilter(event.target.value)} className="h-12 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
-                <option value="">Watch status</option><option value="not-started">To do</option><option value="watching">Watching</option><option value="completed">Watched</option>
+              <span className="sr-only">Status</span>
+              <select aria-label="Status" value={progressFilter} onChange={(event) => setProgressFilter(event.target.value)} className="h-12 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
+                <option value="">Status</option><option value="not-started">To do</option><option value="watching">Doing</option><option value="completed">Done</option>
               </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
             </label>
             <label className="relative">

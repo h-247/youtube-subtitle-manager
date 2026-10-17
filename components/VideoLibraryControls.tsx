@@ -28,9 +28,9 @@ export default function VideoLibraryControls({ video, onUpdated }: { video: Vide
   const controlClass = "inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-[10px] text-neutral-200 hover:bg-neutral-700 disabled:opacity-50";
   return <div className="mt-2 border-t border-neutral-800 pt-2">
     <div className="flex flex-wrap items-center gap-1.5">
-      <label className="flex items-center gap-1.5 text-[11px] text-neutral-400"><span className="sr-only">Watch status</span>
-        <select aria-label={`Watch status for ${video.title}`} value={video.watch_status} disabled={saving} onChange={(event) => void update({ watch_status: event.target.value as WatchStatus })} className="rounded-lg border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-[10px] text-neutral-200 disabled:opacity-50">
-          <option value="TO_DO">To do</option><option value="DOING">Watching</option><option value="DONE">Watched</option>
+      <label className="flex items-center gap-1.5 text-[11px] text-neutral-400"><span className="sr-only">Status</span>
+        <select aria-label={`Status for ${video.title}`} value={video.watch_status} disabled={saving} onChange={(event) => void update({ watch_status: event.target.value as WatchStatus })} className="rounded-lg border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-[10px] text-neutral-200 disabled:opacity-50">
+          <option value="TO_DO">To do</option><option value="DOING">Doing</option><option value="DONE">Done</option>
         </select>
       </label>
       {saving && <Loader2 aria-label="Saving changes" className="h-4 w-4 animate-spin text-neutral-400" />}
