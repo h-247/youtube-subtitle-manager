@@ -9,7 +9,7 @@ import Navbar from "./Navbar";
 import IngestModal from "./IngestModal";
 import ChannelsModal from "./ChannelsModal";
 import VideoLibraryControls from "./VideoLibraryControls";
-import { ExternalLink, Loader2, Play, Search, Tag, Tv } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, Play, Search, Tag, Tv } from "lucide-react";
 
 export default function ChannelsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -20,6 +20,10 @@ export default function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [progressFilter, setProgressFilter] = useState("");
+  const [channelFilter, setChannelFilter] = useState("");
+  const [sort, setSort] = useState("recent");
   const [isIngestOpen, setIsIngestOpen] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
 
@@ -73,8 +77,22 @@ export default function ChannelsPage() {
         const channelVideos = videos.filter((video) => video.channel_title === channel.channel_title);
         const watchedCount = channelVideos.filter((video) => video.watch_status === "DONE").length;
         return { channel, channelVideos, nextVideo: queue[0] ?? null, watchedCount, subtitlesCount: channelVideos.filter((video) => video.status === "COMPLETED").length };
+      })
+      .filter(({ channel, channelVideos, watchedCount }) => {
+        if (tagFilter && !channel.tags.includes(tagFilter)) return false;
+        if (channelFilter && channel.channel_title !== channelFilter) return false;
+        if (progressFilter === "not-started" && channelVideos.some((video) => video.watch_status !== "TO_DO")) return false;
+        if (progressFilter === "watching" && !channelVideos.some((video) => video.watch_status === "DOING")) return false;
+        if (progressFilter === "completed" && (!channelVideos.length || watchedCount !== channelVideos.length)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sort === "name") return a.channel.channel_title.localeCompare(b.channel.channel_title);
+        if (sort === "progress") return (b.watchedCount / (b.channelVideos.length || 1)) - (a.watchedCount / (a.channelVideos.length || 1));
+        const latest = (items: Video[]) => items.reduce((value, video) => Math.max(value, Date.parse(video.updated_at) || Date.parse(video.created_at) || 0), 0);
+        return latest(b.channelVideos) - latest(a.channelVideos) || a.channel.channel_title.localeCompare(b.channel.channel_title);
       });
-  }, [channels, videos, search]);
+  }, [channels, videos, search, tagFilter, progressFilter, channelFilter, sort]);
 
   const onVideoUpdated = (updated: Video) => {
     setVideos((current) => current.map((item) => item.id === updated.id ? updated : item));
@@ -97,21 +115,46 @@ export default function ChannelsPage() {
     <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
       <Navbar onOpenIngest={() => setIsIngestOpen(true)} />
       <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm text-neutral-400"><Tv className="h-4 w-4" /> Channel library</div>
-            <h1 className="text-2xl font-bold">Channels</h1>
-            <p className="mt-1 text-sm text-neutral-400">Browse your channels and open a channel to view its videos.</p>
+        <h1 className="sr-only">Channels</h1>
+        <div className="mb-7 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button aria-pressed={!search && !tagFilter && !progressFilter && !channelFilter} onClick={() => { setSearch(""); setTagFilter(""); setProgressFilter(""); setChannelFilter(""); }} className="h-12 rounded-full border border-neutral-700 bg-[#262626] px-5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-700">All channels</button>
+            <label className="relative">
+              <span className="sr-only">Category</span>
+              <select aria-label="Category" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} className="h-12 max-w-48 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
+                <option value="">Category</option>{allTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+              </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
+            </label>
+            <label className="relative">
+              <span className="sr-only">Progress</span>
+              <select aria-label="Progress" value={progressFilter} onChange={(event) => setProgressFilter(event.target.value)} className="h-12 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
+                <option value="">Progress</option><option value="not-started">Not started</option><option value="watching">Watching</option><option value="completed">Completed</option>
+              </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
+            </label>
+            <label className="relative">
+              <span className="sr-only">Channel</span>
+              <select aria-label="Channel" value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} className="h-12 max-w-56 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
+                <option value="">Channel</option>{channels.map((channel) => <option key={channel.channel_title} value={channel.channel_title}>{channel.channel_title}</option>)}
+              </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
+            </label>
           </div>
-          <button onClick={() => setIsManageOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-200 transition hover:bg-neutral-700">
-            <Tag className="h-4 w-4" /> Manage channels & tags
-          </button>
+          <form role="search" onSubmit={(event) => event.preventDefault()} className="flex w-full gap-2 xl:w-[420px] xl:shrink-0">
+            <input aria-label="Search channels or tags" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search my channels" className="h-12 min-w-0 flex-1 rounded-md border border-neutral-700 bg-transparent px-4 text-sm text-neutral-200 outline-none placeholder:text-neutral-500 focus:border-neutral-400" />
+            <button type="submit" aria-label="Search" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-neutral-800 text-neutral-300 transition hover:bg-neutral-700"><Search className="h-5 w-5" /></button>
+          </form>
         </div>
-
-        <label className="mb-6 flex max-w-xl items-center gap-3 rounded-xl border border-neutral-800 bg-[#262626] px-4 py-3">
-          <Search className="h-4 w-4 text-neutral-500" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search channels or tags…" className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-500" />
-        </label>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p role="status" className="text-sm font-semibold text-neutral-200">{loading ? "Loading channels…" : `${channelCards.length} ${channelCards.length === 1 ? "channel" : "channels"}`}</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button onClick={() => setIsManageOpen(true)} className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white"><Tag className="h-3.5 w-3.5" /> Manage channels & tags</button>
+            <label className="relative">
+              <span className="sr-only">Sort channels</span>
+              <select aria-label="Sort channels" value={sort} onChange={(event) => setSort(event.target.value)} className="appearance-none bg-[#212121] py-2 pl-1 pr-7 text-sm font-semibold text-neutral-200 outline-none focus:ring-1 focus:ring-neutral-500">
+                <option value="recent">Recently updated</option><option value="name">Channel name</option><option value="progress">Watch progress</option>
+              </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-1 top-3 h-4 w-4 text-neutral-400" />
+            </label>
+          </div>
+        </div>
 
         {error && <div className="mb-5 rounded-xl border border-rose-800/60 bg-rose-950/40 p-4 text-sm text-rose-200">{error}</div>}
         {loading ? (
@@ -119,15 +162,11 @@ export default function ChannelsPage() {
         ) : channelCards.length === 0 ? (
           <div className="rounded-2xl border border-neutral-800 bg-[#262626] px-6 py-16 text-center">
             <Tv className="mx-auto mb-3 h-8 w-8 text-neutral-500" />
-            <p className="font-medium">{search ? "No matching channels" : "No channels yet"}</p>
-            <p className="mt-1 text-sm text-neutral-400">Ingest videos to build your channel library.</p>
+            <p className="font-medium">{search || tagFilter || progressFilter || channelFilter ? "No matching channels" : "No channels yet"}</p>
+            <p className="mt-1 text-sm text-neutral-400">{search || tagFilter || progressFilter || channelFilter ? "Try changing your filters or search." : "Ingest videos to build your channel library."}</p>
           </div>
         ) : (
-          <section aria-labelledby="continue-watching-heading">
-            <div className="mb-4 flex items-center justify-between">
-              <div><h2 id="continue-watching-heading" className="text-lg font-semibold">Continue watching</h2><p className="mt-1 text-xs text-neutral-500">Resume videos in progress, or start the next unwatched video from each channel.</p></div>
-              <span className="text-xs text-neutral-500">{channelCards.length} channels</span>
-            </div>
+          <section aria-label="Channel library">
             <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {channelCards.map(({ channel, channelVideos, nextVideo, watchedCount, subtitlesCount }) => {
                 const progress = channel.video_count ? Math.round((watchedCount / channel.video_count) * 100) : 0;
