@@ -126,9 +126,9 @@ export default function ChannelsPage() {
               </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
             </label>
             <label className="relative">
-              <span className="sr-only">Progress</span>
-              <select aria-label="Progress" value={progressFilter} onChange={(event) => setProgressFilter(event.target.value)} className="h-12 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
-                <option value="">Progress</option><option value="not-started">Not started</option><option value="watching">Watching</option><option value="completed">Completed</option>
+              <span className="sr-only">Watch status</span>
+              <select aria-label="Watch status" value={progressFilter} onChange={(event) => setProgressFilter(event.target.value)} className="h-12 appearance-none rounded-full border border-neutral-700 bg-[#262626] pl-5 pr-10 text-sm font-semibold text-neutral-200 outline-none focus:border-neutral-400">
+                <option value="">Watch status</option><option value="not-started">To do</option><option value="watching">Watching</option><option value="completed">Watched</option>
               </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 h-4 w-4 text-neutral-400" />
             </label>
             <label className="relative">
@@ -167,7 +167,7 @@ export default function ChannelsPage() {
           </div>
         ) : (
           <section aria-label="Channel library">
-            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,250px),280px))] items-start gap-4">
               {channelCards.map(({ channel, channelVideos, nextVideo, watchedCount, subtitlesCount }) => {
                 const progress = channel.video_count ? Math.round((watchedCount / channel.video_count) * 100) : 0;
                 const detailHref = `/dashboard/channels/${encodeURIComponent(channel.channel_title)}`;
@@ -177,27 +177,27 @@ export default function ChannelsPage() {
                       {(nextVideo || channelVideos[0])?.thumbnail_url ? <img src={(nextVideo || channelVideos[0])!.thumbnail_url!} alt="" className="h-full w-full object-cover" /> : <Tv className="absolute inset-0 m-auto h-10 w-10 text-neutral-600" />}
                       <span className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-[10px] text-white">{channel.video_count} videos</span>
                     </a>
-                    <div className="p-3">
+                    <div className="p-2.5">
                       <div className="flex items-start justify-between gap-2">
-                        <a href={detailHref} className="line-clamp-1 text-sm font-semibold hover:underline">{channel.channel_title}</a>
+                        <a href={detailHref} className="line-clamp-1 text-xs font-semibold hover:underline">{channel.channel_title}</a>
                         <a href={channel.channel_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(channel.channel_title)}`} target="_blank" rel="noreferrer" aria-label="Open channel on YouTube" className="shrink-0 text-neutral-400 hover:text-white"><ExternalLink className="h-3.5 w-3.5" /></a>
                       </div>
                       <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#171717]"><div className="h-full bg-neutral-300 transition-all" style={{ width: `${progress}%` }} /></div>
                       <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-neutral-400"><span>{watchedCount}/{channel.video_count} watched · {progress}%</span><span>{subtitlesCount} subtitles</span></div>
-                      {nextVideo ? <div className="mt-3">
+                      {nextVideo ? <div className="mt-2">
                         <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-amber-300"><Play className="h-3 w-3" /> {nextVideo.watch_status === "DOING" ? "Continue Watching" : "Next Video"}</p>
-                        <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 min-h-10 text-sm leading-5 hover:underline">{nextVideo.title}</a>
+                        <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs leading-4 hover:underline">{nextVideo.title}</a>
                         <VideoLibraryControls key={nextVideo.id} video={nextVideo} onUpdated={onVideoUpdated} />
-                      </div> : <p className="mt-3 text-xs text-neutral-400">All videos watched.</p>}
-                      {channelVideos.some((video) => video.id !== nextVideo?.id) && <details className="mt-3 border-t border-neutral-800 pt-2">
+                      </div> : <p className="mt-2 text-xs text-neutral-400">All videos watched.</p>}
+                      {channelVideos.some((video) => video.id !== nextVideo?.id) && <details className="mt-2 border-t border-neutral-800 pt-2">
                         <summary className="cursor-pointer text-xs text-neutral-400">More videos ({channelVideos.filter((video) => video.id !== nextVideo?.id).length})</summary>
-                        <div className="mt-3 space-y-4">{channelVideos.filter((video) => video.id !== nextVideo?.id).map((video) => <div key={video.id}>
+                        <div className="mt-2 space-y-4">{channelVideos.filter((video) => video.id !== nextVideo?.id).map((video) => <div key={video.id}>
                           <a href={video.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs font-medium hover:underline">{video.title}</a>
                           <VideoLibraryControls video={video} onUpdated={onVideoUpdated} />
                         </div>)}</div>
                       </details>}
                       {channel.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{channel.tags.map((tag) => <span key={tag} className="text-[10px] text-neutral-400">#{tag}</span>)}</div>}
-                      <a href={detailHref} className="mt-3 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-300 hover:text-white"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
+                      <a href={detailHref} className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-300 hover:text-white"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
                     </div>
                   </article>
                 );
