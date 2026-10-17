@@ -11,7 +11,8 @@ import Navbar from "./Navbar";
 import IngestModal from "./IngestModal";
 
 export default function ChannelDetailPage() {
-  const { channelTitle = "" } = useParams<{ channelTitle: string }>();
+  const { channelTitle: encodedChannelTitle = "" } = useParams<{ channelTitle: string }>();
+  const channelTitle = decodeURIComponent(encodedChannelTitle);
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [channel, setChannel] = useState<ChannelItem | null>(null);
