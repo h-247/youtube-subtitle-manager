@@ -5,7 +5,6 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { DriveStatus } from "../types";
 import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Tv, Link2 } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 interface NavbarProps {
@@ -118,12 +117,12 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
             )}
 
             <nav aria-label="Library pages" className="flex items-center gap-1 rounded-xl border border-neutral-700 bg-neutral-800 p-1">
-              <Link href="/dashboard/videos" aria-current={pathname === "/dashboard" || pathname === "/dashboard/videos" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard" || pathname === "/dashboard/videos" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
+              <a href="/dashboard/videos" aria-current={pathname === "/dashboard" || pathname === "/dashboard/videos" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard" || pathname === "/dashboard/videos" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
                 <Video className="h-4 w-4" /> Videos
-              </Link>
-              <Link href="/dashboard/channels" aria-current={pathname === "/dashboard/channels" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard/channels" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
+              </a>
+              <a href="/dashboard/channels" aria-current={pathname === "/dashboard/channels" ? "page" : undefined} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${pathname === "/dashboard/channels" ? "bg-neutral-600 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}`}>
                 <Tv className="h-4 w-4" /> Channels
-              </Link>
+              </a>
             </nav>
 
             {/* Ingest Action Button */}
