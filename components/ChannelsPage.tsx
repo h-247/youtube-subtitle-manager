@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ChannelItem, Video, WatchStatus } from "../types";
+import { ChannelItem, Video } from "../types";
 import Navbar from "./Navbar";
 import IngestModal from "./IngestModal";
 import ChannelsModal from "./ChannelsModal";
-import { ExternalLink, Film, Loader2, MessageSquare, Play, Search, Tag, Tv } from "lucide-react";
+import VideoLibraryControls from "./VideoLibraryControls";
+import { ExternalLink, Loader2, Play, Search, Tag, Tv } from "lucide-react";
 
 export default function ChannelsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -21,7 +22,7 @@ export default function ChannelsPage() {
   const [search, setSearch] = useState("");
   const [isIngestOpen, setIsIngestOpen] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
-  const [savingVideoId, setSavingVideoId] = useState<number | null>(null);
+
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -71,20 +72,12 @@ export default function ChannelsPage() {
           });
         const channelVideos = videos.filter((video) => video.channel_title === channel.channel_title);
         const watchedCount = channelVideos.filter((video) => video.watch_status === "DONE").length;
-        return { channel, nextVideo: queue[0] ?? null, watchedCount, subtitlesCount: channelVideos.filter((video) => video.status === "COMPLETED").length };
+        return { channel, channelVideos, nextVideo: queue[0] ?? null, watchedCount, subtitlesCount: channelVideos.filter((video) => video.status === "COMPLETED").length };
       });
   }, [channels, videos, search]);
 
-  const updateWatchStatus = async (video: Video, watch_status: WatchStatus) => {
-    setSavingVideoId(video.id);
-    try {
-      const updated = await api.videos.update(video.id, { watch_status });
-      setVideos((current) => current.map((item) => item.id === updated.id ? updated : item));
-    } catch (reason) {
-      alert(reason instanceof Error ? reason.message : "Could not update watch status.");
-    } finally {
-      setSavingVideoId(null);
-    }
+  const onVideoUpdated = (updated: Video) => {
+    setVideos((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
   const startIngestion = async (url: string) => {
@@ -103,7 +96,7 @@ export default function ChannelsPage() {
   return (
     <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
       <Navbar onOpenIngest={() => setIsIngestOpen(true)} />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-neutral-400"><Tv className="h-4 w-4" /> Channel library</div>
@@ -135,33 +128,38 @@ export default function ChannelsPage() {
               <div><h2 id="continue-watching-heading" className="text-lg font-semibold">Continue watching</h2><p className="mt-1 text-xs text-neutral-500">Resume videos in progress, or start the next unwatched video from each channel.</p></div>
               <span className="text-xs text-neutral-500">{channelCards.length} channels</span>
             </div>
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {channelCards.map(({ channel, nextVideo, watchedCount, subtitlesCount }) => {
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {channelCards.map(({ channel, channelVideos, nextVideo, watchedCount, subtitlesCount }) => {
                 const progress = channel.video_count ? Math.round((watchedCount / channel.video_count) * 100) : 0;
                 const detailHref = `/dashboard/channels/${encodeURIComponent(channel.channel_title)}`;
                 return (
-                  <article key={channel.channel_title} className="rounded-2xl border border-neutral-800 bg-[#262626] p-5 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <a href={detailHref} className="line-clamp-2 text-lg font-semibold leading-6 hover:underline">{channel.channel_title}</a>
-                      <a href={channel.channel_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(channel.channel_title)}`} target="_blank" rel="noreferrer" aria-label="Open channel on YouTube" className="shrink-0 text-neutral-400 hover:text-white"><ExternalLink className="h-4 w-4" /></a>
+                  <article key={channel.channel_title} className="overflow-hidden rounded-xl border border-neutral-800 bg-[#262626]">
+                    <a href={detailHref} aria-label={`View ${channel.channel_title} videos`} className="relative block aspect-video overflow-hidden bg-[#171717]">
+                      {(nextVideo || channelVideos[0])?.thumbnail_url ? <img src={(nextVideo || channelVideos[0])!.thumbnail_url!} alt="" className="h-full w-full object-cover" /> : <Tv className="absolute inset-0 m-auto h-10 w-10 text-neutral-600" />}
+                      <span className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-[10px] text-white">{channel.video_count} videos</span>
+                    </a>
+                    <div className="p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <a href={detailHref} className="line-clamp-1 text-sm font-semibold hover:underline">{channel.channel_title}</a>
+                        <a href={channel.channel_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(channel.channel_title)}`} target="_blank" rel="noreferrer" aria-label="Open channel on YouTube" className="shrink-0 text-neutral-400 hover:text-white"><ExternalLink className="h-3.5 w-3.5" /></a>
+                      </div>
+                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#171717]"><div className="h-full bg-neutral-300 transition-all" style={{ width: `${progress}%` }} /></div>
+                      <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-neutral-400"><span>{watchedCount}/{channel.video_count} watched · {progress}%</span><span>{subtitlesCount} subtitles</span></div>
+                      {nextVideo ? <div className="mt-3">
+                        <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-amber-300"><Play className="h-3 w-3" /> {nextVideo.watch_status === "DOING" ? "Continue Watching" : "Next Video"}</p>
+                        <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 min-h-10 text-sm leading-5 hover:underline">{nextVideo.title}</a>
+                        <VideoLibraryControls key={nextVideo.id} video={nextVideo} onUpdated={onVideoUpdated} />
+                      </div> : <p className="mt-3 text-xs text-neutral-400">All videos watched.</p>}
+                      {channelVideos.some((video) => video.id !== nextVideo?.id) && <details className="mt-3 border-t border-neutral-800 pt-2">
+                        <summary className="cursor-pointer text-xs text-neutral-400">More videos ({channelVideos.filter((video) => video.id !== nextVideo?.id).length})</summary>
+                        <div className="mt-3 space-y-4">{channelVideos.filter((video) => video.id !== nextVideo?.id).map((video) => <div key={video.id}>
+                          <a href={video.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs font-medium hover:underline">{video.title}</a>
+                          <VideoLibraryControls video={video} onUpdated={onVideoUpdated} />
+                        </div>)}</div>
+                      </details>}
+                      {channel.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{channel.tags.map((tag) => <span key={tag} className="text-[10px] text-neutral-400">#{tag}</span>)}</div>}
+                      <a href={detailHref} className="mt-3 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-300 hover:text-white"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
                     </div>
-                    <div className="mt-4 flex items-center justify-between text-xs text-neutral-400"><span>Watch Progress</span><span className="font-mono text-neutral-200">{progress}%</span></div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#171717]"><div className="h-full rounded-full bg-neutral-300 transition-all" style={{ width: `${progress}%` }} /></div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-md border border-neutral-700 bg-[#1d1d1d] px-2.5 py-1 text-neutral-300">{channel.video_count} Videos</span>
-                      <span className="rounded-md border border-neutral-700 bg-[#1d1d1d] px-2.5 py-1 text-neutral-300">{watchedCount} Watched</span>
-                      <span className="rounded-md border border-neutral-700 bg-[#1d1d1d] px-2.5 py-1 text-neutral-300">{subtitlesCount} Subtitles</span>
-                    </div>
-                    <div className="mt-4 rounded-xl border border-neutral-800 bg-[#1b1b1b] p-3.5">
-                      <div className="mb-2 flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-amber-300"><Play className="h-3.5 w-3.5" fill="currentColor" /> {nextVideo?.watch_status === "DOING" ? "Continue Watching" : "Next Video"}</span>{nextVideo && <span className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-1 text-[10px] text-neutral-300">{nextVideo.watch_status === "DOING" ? "Watching" : "To do"}</span>}</div>
-                      {nextVideo ? <div className="flex items-center gap-3">
-                        {nextVideo.thumbnail_url && <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="h-12 w-20 shrink-0 overflow-hidden rounded-md bg-neutral-900"><img src={nextVideo.thumbnail_url} alt="" className="h-full w-full object-cover" /></a>}
-                        <div className="min-w-0 flex-1"><a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-sm font-medium hover:underline">{nextVideo.title}</a><div className="mt-1 text-[11px] text-neutral-500">{nextVideo.status === "COMPLETED" ? "Subtitles ready" : nextVideo.status.replaceAll("_", " ")}</div></div>
-                        {nextVideo.chatgpt_link && <a href={nextVideo.chatgpt_link} target="_blank" rel="noreferrer" title="Open ChatGPT link" className="shrink-0 text-sky-300 hover:text-sky-200"><MessageSquare className="h-4 w-4" /></a>}
-                      </div> : <p className="text-xs text-neutral-500">All saved videos from this channel are marked watched.</p>}
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-1.5">{channel.tags.map((tag) => <span key={tag} className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300">#{tag}</span>)}</div>
-                    <a href={detailHref} className="mt-4 flex w-full items-center justify-between rounded-xl border border-neutral-800 bg-[#1b1b1b] px-3.5 py-2.5 text-sm font-medium text-neutral-100 transition hover:bg-neutral-800"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
                   </article>
                 );
               })}
