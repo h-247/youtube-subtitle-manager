@@ -109,7 +109,7 @@ export default function ChannelsPage() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-neutral-400"><Tv className="h-4 w-4" /> Channel library</div>
             <h1 className="text-2xl font-bold">Channels</h1>
-            <p className="mt-1 text-sm text-neutral-400">Mỗi kênh hiển thị video tiếp theo trong danh sách xem của bạn.</p>
+            <p className="mt-1 text-sm text-neutral-400">Browse your channels and open a channel to view its videos.</p>
           </div>
           <button onClick={() => setIsManageOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-200 transition hover:bg-neutral-700">
             <Tag className="h-4 w-4" /> Manage channels & tags
@@ -133,7 +133,7 @@ export default function ChannelsPage() {
         ) : (
           <section aria-labelledby="continue-watching-heading">
             <div className="mb-4 flex items-center justify-between">
-              <div><h2 id="continue-watching-heading" className="text-lg font-semibold">Continue watching</h2><p className="mt-1 text-xs text-neutral-500">Đang xem được ưu tiên; nếu chưa có, chọn video chưa xem cũ nhất của kênh.</p></div>
+              <div><h2 id="continue-watching-heading" className="text-lg font-semibold">Continue watching</h2><p className="mt-1 text-xs text-neutral-500">Resume videos in progress, or start the next unwatched video from each channel.</p></div>
               <span className="text-xs text-neutral-500">{channelCards.length} channels</span>
             </div>
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
