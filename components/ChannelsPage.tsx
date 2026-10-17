@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { ChannelItem, Video, WatchStatus } from "../types";
@@ -143,7 +142,7 @@ export default function ChannelsPage() {
                 return (
                   <article key={channel.channel_title} className="rounded-2xl border border-neutral-800 bg-[#262626] p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
-                      <Link href={detailHref} className="line-clamp-2 text-lg font-semibold leading-6 hover:underline">{channel.channel_title}</Link>
+                      <a href={detailHref} className="line-clamp-2 text-lg font-semibold leading-6 hover:underline">{channel.channel_title}</a>
                       <a href={channel.channel_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(channel.channel_title)}`} target="_blank" rel="noreferrer" aria-label="Open channel on YouTube" className="shrink-0 text-neutral-400 hover:text-white"><ExternalLink className="h-4 w-4" /></a>
                     </div>
                     <div className="mt-4 flex items-center justify-between text-xs text-neutral-400"><span>Watch Progress</span><span className="font-mono text-neutral-200">{progress}%</span></div>
@@ -162,7 +161,7 @@ export default function ChannelsPage() {
                       </div> : <p className="text-xs text-neutral-500">All saved videos from this channel are marked watched.</p>}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-1.5">{channel.tags.map((tag) => <span key={tag} className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300">#{tag}</span>)}</div>
-                    <Link href={detailHref} className="mt-4 flex w-full items-center justify-between rounded-xl border border-neutral-800 bg-[#1b1b1b] px-3.5 py-2.5 text-sm font-medium text-neutral-100 transition hover:bg-neutral-800"><span>View Channel Content</span><span aria-hidden="true">→</span></Link>
+                    <a href={detailHref} className="mt-4 flex w-full items-center justify-between rounded-xl border border-neutral-800 bg-[#1b1b1b] px-3.5 py-2.5 text-sm font-medium text-neutral-100 transition hover:bg-neutral-800"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
                   </article>
                 );
               })}

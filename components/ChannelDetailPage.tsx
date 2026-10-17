@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ExternalLink, Film, Loader2, MessageSquare, Pencil, Play, Save, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -80,7 +79,7 @@ export default function ChannelDetailPage() {
   return <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
     <Navbar onOpenIngest={() => setIngestOpen(true)} />
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-      <Link href="/dashboard/channels" className="mb-6 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:text-white"><ArrowLeft className="h-4 w-4" /> Channels</Link>
+      <a href="/dashboard/channels" className="mb-6 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:text-white"><ArrowLeft className="h-4 w-4" /> Channels</a>
       {error && <div className="mb-5 rounded-xl border border-rose-800/60 bg-rose-950/40 p-4 text-sm text-rose-200">{error}</div>}
       {loading ? <div className="flex items-center justify-center gap-3 rounded-2xl border border-neutral-800 bg-[#262626] py-16 text-sm text-neutral-400"><Loader2 className="h-5 w-5 animate-spin" /> Loading channel…</div> : !channel ? <div className="rounded-2xl border border-neutral-800 bg-[#262626] p-8 text-center">Channel not found.</div> : <>
         <section className="rounded-2xl border border-neutral-800 bg-[#262626] p-6 sm:p-8">
