@@ -26,6 +26,10 @@ def extract_video_id(url: str) -> Optional[str]:
 
 import os
 import logging
+import json
+import re
+import tempfile
+import time
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +42,60 @@ def get_ydl_cookie_opts() -> dict:
     2. Otherwise checks if YTDLP_COOKIES_FROM_BROWSER is configured (e.g. 'brave', 'chrome', 'firefox').
     """
     opts = {}
+    cookie_json = getattr(settings, "YTDLP_COOKIES_JSON", None)
+    if cookie_json:
+        try:
+            entries = json.loads(cookie_json)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("YTDLP_COOKIES_JSON must contain a JSON array of YouTube cookies.") from exc
+        if not isinstance(entries, list):
+            raise ValueError("YTDLP_COOKIES_JSON must contain a JSON array of YouTube cookies.")
+        lines = ["# Netscape HTTP Cookie File"]
+        for cookie in entries:
+            if not isinstance(cookie, dict):
+                continue
+            name, value, domain = cookie.get("name"), cookie.get("value"), cookie.get("domain")
+            if not all(isinstance(part, str) for part in (name, value, domain)):
+                continue
+            normalized_domain = domain.lstrip(".").lower()
+            if normalized_domain != "youtube.com" or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z_-]+", name):
+                continue
+            if any(character in value for character in "\r\n\t"):
+                continue
+            expires = cookie.get("expirationDate")
+            try:
+                expires = int(expires or 0)
+            except (TypeError, ValueError, OverflowError):
+                expires = 0
+            if expires and expires < int(time.time()):
+                continue
+            include_subdomains = not bool(cookie.get("hostOnly")) or domain.startswith(".")
+            cookie_domain = f"#HttpOnly_{domain}" if cookie.get("httpOnly") else domain
+            lines.append("\t".join((
+                cookie_domain,
+                "TRUE" if include_subdomains else "FALSE",
+                "/",  # Cookie export paths are unnecessary for yt-dlp and cannot inject fields.
+                "TRUE" if cookie.get("secure") else "FALSE",
+                str(expires),
+                name,
+                value,
+            )))
+        if len(lines) == 1:
+            raise ValueError("YTDLP_COOKIES_JSON contains no usable, unexpired YouTube cookies.")
+        cookie_dir = os.path.join(tempfile.gettempdir(), "youtube-subtitle-manager")
+        os.makedirs(cookie_dir, mode=0o700, exist_ok=True)
+        cookie_path = os.path.join(cookie_dir, "youtube-cookies.txt")
+        temporary_path = f"{cookie_path}.tmp"
+        with open(temporary_path, "w", encoding="utf-8", newline="\n") as cookie_file:
+            cookie_file.write("\n".join(lines) + "\n")
+        try:
+            os.chmod(temporary_path, 0o600)
+        except OSError:
+            pass
+        os.replace(temporary_path, cookie_path)
+        opts["cookiefile"] = cookie_path
+        return opts
+
     cookie_path = getattr(settings, "YTDLP_COOKIES_FILE", "cookies.txt")
     if cookie_path:
         candidates = []

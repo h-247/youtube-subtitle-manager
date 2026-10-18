@@ -60,3 +60,6 @@ youtube_subtitles.db
 # OS files
 .DS_Store
 Thumbs.db
+
+# Isolated ChatGPT Sites checkout
+/.sites-checkout/

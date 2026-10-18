@@ -475,7 +475,8 @@ def test_async_worker_retry_and_success_flow(db_session, user_a):
     with patch("app.services.ingestion_service.get_db_session", side_effect=mock_get_db_session), \
          patch("app.services.ingestion_service.download_subtitles", side_effect=mock_download), \
          patch("app.services.ingestion_service.time.sleep", return_value=None):
-        _process_video_worker(vid_id, user_a.id, initial_delay=0.0)
+        for _ in range(3):
+            _process_video_worker(vid_id, user_a.id, initial_delay=0.0)
 
     db_session.refresh(video)
     assert video.status == "COMPLETED"
@@ -592,7 +593,8 @@ def test_async_worker_drive_upload_failure_retries_and_succeeds(db_session, user
          patch("app.services.ingestion_service.download_subtitles", return_value=mock_sub), \
          patch("app.services.ingestion_service.drive_service.upload_subtitle", side_effect=mock_upload), \
          patch("app.services.ingestion_service.time.sleep", return_value=None):
-        _process_video_worker(vid_id, user_a.id, initial_delay=0.0)
+        for _ in range(2):
+            _process_video_worker(vid_id, user_a.id, initial_delay=0.0)
 
     db_session.refresh(video)
     assert video.status == "COMPLETED"

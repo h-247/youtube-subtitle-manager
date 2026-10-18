@@ -23,7 +23,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (!response.ok) {
     let errorDetail = "An unexpected error occurred.";
     try {
-      const errorJson = await response.json();
+      const errorJson = await response.json() as { detail?: unknown };
       if (Array.isArray(errorJson.detail)) {
         errorDetail = errorJson.detail
           .map((item: { msg?: string; loc?: unknown[] }) => {
@@ -52,6 +52,13 @@ export const api = {
       return request<{ access_token: string; user: User }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
+      });
+    },
+
+    async loginWithSites(pairingCode: string): Promise<{ access_token: string; user: User }> {
+      return request<{ access_token: string; user: User }>("/auth/sites-login", {
+        method: "POST",
+        body: JSON.stringify({ pairing_code: pairingCode }),
       });
     },
 
@@ -151,6 +158,27 @@ export const api = {
       return request<{ message: string }>("/drive/disconnect", {
         method: "POST",
       });
+    },
+  },
+
+  sitesSync: {
+    async getStatus(): Promise<{ is_connected: boolean; drive_is_configured?: boolean; drive_is_connected?: boolean; site_url: string; pending_count?: number; failed_count?: number; sync_error?: string | null }> {
+      return request<{ is_connected: boolean; drive_is_configured?: boolean; drive_is_connected?: boolean; site_url: string; pending_count?: number; failed_count?: number; sync_error?: string | null }>("/sites-sync/status");
+    },
+
+    async refreshDriveLinks(): Promise<{ updated: number }> {
+      return request<{ updated: number }>("/sites-sync/refresh-drive-links", { method: "POST" });
+    },
+
+    async connect(token: string): Promise<{ is_connected: boolean; message: string }> {
+      return request<{ is_connected: boolean; message: string }>("/sites-sync/connect", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+    },
+
+    async disconnect(): Promise<{ is_connected: boolean }> {
+      return request<{ is_connected: boolean }>("/sites-sync/connect", { method: "DELETE" });
     },
   },
 };

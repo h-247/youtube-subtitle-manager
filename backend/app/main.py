@@ -138,10 +138,27 @@ async def lifespan(app: FastAPI):
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN watch_status VARCHAR(32) DEFAULT 'TO_DO' NOT NULL")
                     if "channel_tags" not in cols:
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN channel_tags VARCHAR(256)")
+                    if "subtitle_text" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN subtitle_text TEXT")
                     conn.exec_driver_sql("UPDATE videos SET watch_status = status, status = 'COMPLETED' WHERE status IN ('TO_DO', 'DOING', 'DONE')")
+                user_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()]
+                if user_cols and "sites_sync_token" not in user_cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN sites_sync_token TEXT")
+                if user_cols and "sites_user_id" not in user_cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN sites_user_id VARCHAR(255)")
+                if user_cols:
+                    conn.exec_driver_sql(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_sites_user_id ON users (sites_user_id)"
+                    )
     except Exception:
         pass
-    yield
+    from app.services.durable_jobs import JobRunner
+    runner = JobRunner()
+    runner.start()
+    try:
+        yield
+    finally:
+        runner.stop()
 
 
 app = FastAPI(

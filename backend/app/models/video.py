@@ -28,6 +28,7 @@ class Video(Base):
     # Subtitle info: MANUAL, AUTO, NONE
     subtitle_type = Column(String(32), default="NONE", nullable=False)
     subtitle_language = Column(String(32), default="en", nullable=True)
+    subtitle_text = Column(Text, nullable=True)
 
     # Google Drive metadata
     drive_file_id = Column(String(256), nullable=True)

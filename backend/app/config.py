@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    DOWNLOAD_CONCURRENCY: int = 2
+
     # Database
     DATABASE_URL: str = "sqlite:///./youtube_subtitles.db"
 
@@ -44,8 +46,18 @@ class Settings(BaseSettings):
     # YouTube Cookies Configuration (avoids HTTP 429 rate limiting)
     # Path to Netscape format cookies.txt file (recommended for Windows/Chromium)
     YTDLP_COOKIES_FILE: Optional[str] = "cookies.txt"
+    # Optional browser-exported cookie JSON. Materialized as a private temp file at runtime.
+    YTDLP_COOKIES_JSON: Optional[str] = None
     # Optional browser name for direct extraction, e.g. "brave", "chrome", "firefox"
     YTDLP_COOKIES_FROM_BROWSER: Optional[str] = None
+
+    # Shared secret used only by the ChatGPT Sites subtitle proxy endpoint.
+    SUBTITLE_BACKEND_TOKEN: Optional[str] = None
+
+    # Sites library that receives local metadata and downloaded subtitles.
+    SITES_SYNC_URL: str = "https://youtube-subtitle-manager.h-247.chatgpt.site"
+    # Service credential for accessing a private ChatGPT Site from this local backend.
+    SITES_SERVICE_TOKEN: str = ""
 
 
 settings = Settings()

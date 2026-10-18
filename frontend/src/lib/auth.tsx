@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  loginWithSites: (pairingCode: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -49,6 +50,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/dashboard");
   };
 
+  const loginWithSites = async (pairingCode: string) => {
+    const data = await api.auth.loginWithSites(pairingCode);
+    localStorage.setItem("token", data.access_token);
+    setUser(data.user);
+    router.push("/dashboard");
+  };
+
   const logout = async () => {
     await api.auth.logout();
     setUser(null);
@@ -56,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithSites, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

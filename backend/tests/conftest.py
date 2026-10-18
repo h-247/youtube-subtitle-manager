@@ -54,7 +54,8 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, monkeypatch):
+    monkeypatch.setattr("app.services.durable_jobs.JobRunner.start", lambda self: None)
     def override_get_db():
         try:
             yield db_session

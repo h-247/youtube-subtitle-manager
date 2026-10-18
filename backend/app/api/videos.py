@@ -26,6 +26,8 @@ from app.services.subtitle_service import download_subtitles
 from app.services.drive_service import drive_service
 
 from app.services.ingestion_service import queue_video_processing, is_job_active
+from app.services.sites_sync_service import sync_video_async
+from app.services.durable_jobs import enqueue_sync
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -165,6 +167,7 @@ def ingest_videos(
 
     # Queue background processing jobs
     for v_id in videos_to_queue:
+        sync_video_async(v_id)
         queue_video_processing(v_id, current_user.id)
 
     return VideoIngestResponse(
@@ -318,7 +321,14 @@ def set_channel_tags(
     for t in tags:
         db.add(ChannelTag(user_id=current_user.id, channel_title=ch_title, tag=t))
 
+    for changed in db.query(Video).filter(Video.user_id == current_user.id, Video.channel_title == ch_title).all():
+        enqueue_sync(db, changed)
     db.commit()
+    updated_ids = db.query(Video.id).filter(
+        Video.user_id == current_user.id, Video.channel_title == ch_title
+    ).all()
+    for (video_id,) in updated_ids:
+        sync_video_async(video_id)
     return ChannelTagRead(channel_title=ch_title, tags=tags)
 
 
@@ -448,8 +458,20 @@ def update_video(
             for t in tags:
                 db.add(ChannelTag(user_id=current_user.id, channel_title=video.channel_title, tag=t))
 
+    if payload.channel_tags is not None and video.channel_title:
+        for changed in db.query(Video).filter(Video.user_id == current_user.id, Video.channel_title == video.channel_title).all():
+            enqueue_sync(db, changed)
     db.commit()
     db.refresh(video)
+
+    if payload.channel_tags is not None and video.channel_title:
+        updated_video_ids = db.query(Video.id).filter(
+            Video.user_id == current_user.id, Video.channel_title == video.channel_title
+        ).all()
+        for (updated_video_id,) in updated_video_ids:
+            sync_video_async(updated_video_id)
+    else:
+        sync_video_async(video.id)
 
     return VideoRead.model_validate(video)
 

@@ -101,7 +101,7 @@ The fastest way to spin up the entire stack (PostgreSQL database, FastAPI backen
 
 5. **Start FastAPI Development Server:**
    ```powershell
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
    ```
    *(Note: Development and server access logs automatically sanitize OAuth callback requests by redacting authorization codes and sensitive parameters, e.g. `GET /api/drive/callback?code=[REDACTED]&state=...`, preventing raw codes from being retained in log outputs or storage.)*
 
@@ -121,11 +121,18 @@ The fastest way to spin up the entire stack (PostgreSQL database, FastAPI backen
 
 3. **Start Next.js Development Server:**
    ```powershell
+   $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8001/api"
    npm run dev
    ```
 
 4. **Open in browser:**
    Visit [http://localhost:3000](http://localhost:3000).
+
+### Sync local subtitle downloads to ChatGPT Sites
+
+Run the local frontend and backend above. Sign in to your ChatGPT Site and select **Pair Local App**. Copy the code, switch to the local app, select **ChatGPT Site** on the login page, and paste it. The local account is created or linked to the Site's stable user ID automatically; the pairing also enables outbound library sync. The local backend stores the code encrypted, and Sites stores only its hash. Creating a fresh code revokes the previous one; sign in locally again with the new code.
+
+Newly ingested videos, progress, downloaded subtitle text, edits, tags, and deletions sync to the paired Sites account. The Site dashboard can then show the library and handle its own Google Drive sync. This sync is outbound from the laptop, so it does not require a public tunnel. Keep the backend running while downloading; Sites will show new changes after its dashboard refreshes.
 
 ---
 

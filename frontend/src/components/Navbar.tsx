@@ -4,23 +4,81 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { DriveStatus } from "../types";
-import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Tv } from "lucide-react";
+import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Link2 } from "lucide-react";
 
 interface NavbarProps {
   onOpenIngest: () => void;
-  onOpenChannels: () => void;
 }
 
-export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
+async function refreshSitesDriveLinks() {
+  try {
+    await api.sitesSync.refreshDriveLinks();
+    window.dispatchEvent(new Event("sites-drive-links-refreshed"));
+  } catch {
+    // The Drive connection badge remains valid even if link reconciliation fails.
+  }
+}
+
+export default function Navbar({ onOpenIngest }: NavbarProps) {
   const { user, logout, refreshUser } = useAuth();
   const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [connectingDrive, setConnectingDrive] = useState(false);
+  const [sitesConnected, setSitesConnected] = useState(false);
+  const [sitesDriveConfigured, setSitesDriveConfigured] = useState<boolean | null>(null);
+  const [sitesDriveConnected, setSitesDriveConnected] = useState<boolean | null>(null);
+  const [syncSummary, setSyncSummary] = useState("Sync status loading...");
+  const [checkingSites, setCheckingSites] = useState(false);
 
   useEffect(() => {
     if (user) {
       api.drive.getStatus().then(setDriveStatus).catch(() => {});
+      setCheckingSites(true);
+      api.sitesSync.getStatus().then((status) => {
+        setSitesConnected(status.is_connected);
+        setSitesDriveConfigured(status.drive_is_configured ?? null);
+        setSitesDriveConnected(status.drive_is_connected ?? null);
+        if (status.is_connected && status.drive_is_connected === true) void refreshSitesDriveLinks();
+      }).catch(() => {}).finally(() => setCheckingSites(false));
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refresh = () => api.sitesSync.getStatus().then(status => {
+      if (active) setSyncSummary(status.sync_error
+        ? `${status.pending_count ?? 0} pending: ${status.sync_error}`
+        : status.pending_count ? `${status.pending_count} changes waiting to sync`
+        : status.is_connected ? "Sites sync up to date" : "Sites sync disconnected");
+    }).catch(() => { if (active) setSyncSummary("Sync status unavailable; reconnecting automatically"); });
+    void refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [user]);
+
+  const handleSitesSync = async () => {
+    try {
+      if (sitesConnected) {
+        if (!confirm("Disconnect Sites? Local downloads will stop syncing there.")) return;
+        await api.sitesSync.disconnect();
+        setSitesConnected(false);
+        setSitesDriveConfigured(null);
+        setSitesDriveConnected(null);
+        return;
+      }
+      const token = window.prompt("Paste the one-time pairing code from the Pair Local App button on Sites:")?.trim();
+      if (!token) return;
+      await api.sitesSync.connect(token);
+      const status = await api.sitesSync.getStatus();
+      setSitesConnected(status.is_connected);
+      setSitesDriveConfigured(status.drive_is_configured ?? null);
+      setSitesDriveConnected(status.drive_is_connected ?? null);
+      if (status.is_connected && status.drive_is_connected === true) void refreshSitesDriveLinks();
+      alert("Sites connected. Your existing local videos are syncing now.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not connect Sites.");
+    }
+  };
 
   const handleConnectDrive = async () => {
     try {
@@ -65,46 +123,62 @@ export default function Navbar({ onOpenIngest, onOpenChannels }: NavbarProps) {
         {/* Right side controls */}
         {user && (
           <div className="flex items-center space-x-3">
+            <button onClick={handleSitesSync} disabled={checkingSites} className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5 transition disabled:opacity-60" title="Sync local downloads to your ChatGPT Site">
+              {sitesConnected ? <CheckCircle2 className="w-4 h-4 text-neutral-300" /> : <Link2 className="w-4 h-4 text-neutral-400" />}
+              <span>{sitesConnected ? "Sites Connected" : "Connect Sites"}</span>
+            </button>
+            <span role="status" className="text-xs text-neutral-400 max-w-48" title={syncSummary}>{syncSummary}</span>
             {/* Drive Connection Status */}
-            {driveStatus?.is_configured ? (
-              driveStatus.is_connected ? (
-                <div className="flex items-center bg-neutral-800 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-neutral-300" />
-                  <span>Drive Connected</span>
-                  <button
-                    onClick={handleDisconnectDrive}
-                    className="ml-1 text-neutral-400 hover:text-rose-400 hover:underline pl-1 border-l border-neutral-700"
-                    title="Disconnect Google Drive"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              ) : (
+            {driveStatus?.is_connected ? (
+              <div className="flex items-center bg-neutral-800 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5" title="Subtitles upload directly from this local app to Google Drive">
+                <CheckCircle2 className="w-4 h-4 text-neutral-300" />
+                <span>Drive Connected</span>
                 <button
-                  onClick={handleConnectDrive}
-                  disabled={connectingDrive}
-                  className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5 transition"
+                  onClick={handleDisconnectDrive}
+                  className="ml-1 text-neutral-400 hover:text-rose-400 hover:underline pl-1 border-l border-neutral-700"
+                  title="Disconnect Google Drive from this local app"
                 >
-                  <HardDrive className="w-4 h-4 text-amber-400" />
-                  <span>{connectingDrive ? "Connecting..." : "Connect Drive"}</span>
+                  Disconnect
                 </button>
-              )
-            ) : (
-              <div className="flex items-center bg-neutral-800 text-neutral-400 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="OAuth not configured in server .env">
+              </div>
+            ) : sitesConnected && sitesDriveConnected === true ? (
+              <div className="flex items-center bg-neutral-800 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5" title="Local subtitles sync to your ChatGPT Site, which uploads them using its connected Google Drive account">
+                <CheckCircle2 className="w-4 h-4 text-neutral-300" />
+                <span>Drive via Sites</span>
+              </div>
+            ) : sitesConnected && sitesDriveConfigured === true && sitesDriveConnected === false ? (
+              <div className="flex items-center bg-neutral-800 text-amber-300 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5" title="Connect Google Drive from your ChatGPT Site; local downloads will then upload through that connection">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                <span>Connect Drive on Sites</span>
+              </div>
+            ) : driveStatus?.is_configured ? (
+              <button
+                onClick={handleConnectDrive}
+                disabled={connectingDrive}
+                className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5 transition"
+                title="Connect Google Drive directly to this local app"
+              >
+                <HardDrive className="w-4 h-4 text-amber-400" />
+                <span>{connectingDrive ? "Connecting..." : "Connect Drive"}</span>
+              </button>
+            ) : sitesConnected && sitesDriveConfigured === false ? (
+              <div className="flex items-center bg-neutral-800 text-neutral-400 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="Google Drive OAuth is not configured on Sites">
                 <AlertCircle className="w-3.5 h-3.5 text-neutral-500 mr-1" />
-                Drive Unconfigured
+                Drive not configured on Sites
+              </div>
+            ) : sitesConnected ? (
+              <div className="flex items-center bg-neutral-800 text-amber-300 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="This local backend has not loaded the Sites Drive status update. Restart the local app to refresh it.">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 mr-1" />
+                Drive status needs backend restart
+              </div>
+            ) : (
+              <div className="flex items-center bg-neutral-800 text-neutral-400 border border-neutral-700 px-2.5 py-1 rounded-md text-xs font-normal" title="Connect Sites to use its Drive account, or configure local Google Drive OAuth">
+                <AlertCircle className="w-3.5 h-3.5 text-neutral-500 mr-1" />
+                Drive unavailable
               </div>
             )}
 
-            {/* Channels Management Button */}
-            <button
-              onClick={onOpenChannels}
-              className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 font-medium px-3.5 py-2 rounded-lg text-sm transition space-x-1.5 shadow-sm"
-              title="View and manage channels & tags"
-            >
-              <Tv className="w-4 h-4 text-neutral-400" />
-              <span>Channels</span>
-            </button>
+
 
             {/* Ingest Action Button */}
             <button

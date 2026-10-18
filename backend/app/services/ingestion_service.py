@@ -2,6 +2,7 @@ import threading
 import time
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Set
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from app.models.video import Video
 from app.models.user import User
 from app.services.subtitle_service import download_subtitles
 from app.services.drive_service import drive_service
+from app.services.sites_sync_service import sync_video
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +38,37 @@ def queue_video_processing(video_db_id: int, user_id: int, initial_delay: float 
     Enqueues background processing for a video.
     Ensures that an already PROCESSING video does not receive a second concurrent job.
     """
-    with _lock:
-        if video_db_id in _active_video_ids:
-            return
-        _active_video_ids.add(video_db_id)
+    # PROCESSING rows are the durable queue; the dispatcher owns worker creation.
+    with get_db_session() as db:
+        video = db.query(Video).filter(Video.id == video_db_id, Video.user_id == user_id).first()
+        if video and video.status not in ("PROCESSING", "COMPLETED"):
+            video.status = "PROCESSING"
+            db.commit()
 
-    thread = threading.Thread(
-        target=_process_video_worker,
-        args=(video_db_id, user_id, initial_delay),
-        daemon=True,
-    )
-    thread.start()
+
+def dispatch_pending() -> None:
+    from app.config import settings
+    with _lock:
+        capacity = max(1, settings.DOWNLOAD_CONCURRENCY) - len(_active_video_ids)
+        if capacity <= 0:
+            return
+        with get_db_session() as db:
+            pending = db.query(Video).filter(Video.status == "PROCESSING").order_by(Video.updated_at, Video.id).all()
+            for video in pending:
+                if video.id in _active_video_ids:
+                    continue
+                if video.error_message and video.retry_count:
+                    updated = video.updated_at
+                    if updated and updated.tzinfo is None:
+                        updated = updated.replace(tzinfo=timezone.utc)
+                    delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** min(video.retry_count - 1, 20)), MAX_RETRY_DELAY_SECONDS)
+                    if updated and (datetime.now(timezone.utc) - updated).total_seconds() < delay:
+                        continue
+                _active_video_ids.add(video.id)
+                threading.Thread(target=_process_video_worker, args=(video.id, video.user_id, 0), daemon=True).start()
+                capacity -= 1
+                if capacity == 0:
+                    break
 
 
 def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) -> None:
@@ -71,6 +93,7 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
                     # Status manually changed or cancelled
                     break
 
+                retry_count = video.retry_count or 0
                 video_id = video.video_id
                 youtube_url = video.youtube_url
                 video_title = video.title
@@ -90,6 +113,7 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
                 else:
                     video.progress_message = f"Retrying subtitle download (attempt {retry_count + 1})..."
                 db.commit()
+                sync_video(db, video)
 
             # Execute subtitle download
             try:
@@ -107,6 +131,13 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
 
             if status_result == "COMPLETED":
                 file_path = sub_result.get("file_path")
+                subtitle_text = None
+                if file_path:
+                    try:
+                        with open(file_path, "r", encoding="utf-8-sig") as subtitle_file:
+                            subtitle_text = subtitle_file.read()
+                    except OSError:
+                        logger.warning("Could not read subtitle text for Sites sync: %s", video_id)
                 drive_id = None
                 drive_url = None
                 drive_error = None
@@ -149,10 +180,10 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
                         video.error_message = drive_error
                         video.progress_message = f"{drive_error}. Retrying indefinitely (attempt {retry_count})..."
                         db.commit()
+                        sync_video(db, video)
 
-                    delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** (retry_count - 1)), MAX_RETRY_DELAY_SECONDS)
-                    time.sleep(delay)
-                    continue
+                    delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** min(retry_count - 1, 20)), MAX_RETRY_DELAY_SECONDS)
+                    return
 
                 # Everything succeeded!
                 with get_db_session() as db:
@@ -161,11 +192,13 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
                         video.status = "COMPLETED"
                         video.subtitle_type = sub_result.get("subtitle_type", "NONE")
                         video.subtitle_language = sub_result.get("subtitle_language")
+                        video.subtitle_text = subtitle_text
                         video.drive_file_id = drive_id
                         video.drive_file_url = drive_url
                         video.error_message = None
                         video.progress_message = "Subtitles downloaded and archived successfully."
                         db.commit()
+                        sync_video(db, video)
                 break
 
             # Handle retryable conditions: NO_SUBTITLES or FAILED
@@ -184,9 +217,10 @@ def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) 
                 video.error_message = err_msg
                 video.progress_message = f"{err_msg}. Retrying (attempt {retry_count})..."
                 db.commit()
+                sync_video(db, video)
 
-            delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** (retry_count - 1)), MAX_RETRY_DELAY_SECONDS)
-            time.sleep(delay)
+            delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** min(retry_count - 1, 20)), MAX_RETRY_DELAY_SECONDS)
+            return
 
     except Exception as exc:
         logger.exception("Unexpected error in video processing worker for video_id %s: %s", video_db_id, exc)
