@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { ChannelItem, Video } from "../types";
 import Navbar from "./Navbar";
+import ChannelThumbnail from "./ChannelThumbnail";
 import IngestModal from "./IngestModal";
 import ChannelsModal from "./ChannelsModal";
 import VideoLibraryControls from "./VideoLibraryControls";
@@ -194,7 +195,7 @@ export default function ChannelsPage() {
                 return (
                   <article key={channel.channel_title} className="overflow-hidden rounded-xl border border-neutral-800 bg-[#262626]">
                     <a href={detailHref} aria-label={`View ${channel.channel_title} videos`} className="relative block aspect-video overflow-hidden bg-[#171717]">
-                      {(nextVideo || channelVideos[0])?.thumbnail_url ? <img src={(nextVideo || channelVideos[0])!.thumbnail_url!} alt="" className="h-full w-full object-cover" /> : <Tv className="absolute inset-0 m-auto h-10 w-10 text-neutral-600" />}
+                      <ChannelThumbnail key={(nextVideo || channelVideos[0])?.video_id} videoId={(nextVideo || channelVideos[0])?.video_id} title={channel.channel_title} />
                     </a>
                     <div className="p-2.5">
                       <div className="flex items-start justify-between gap-2">
