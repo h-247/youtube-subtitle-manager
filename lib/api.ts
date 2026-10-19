@@ -102,6 +102,7 @@ export const api = {
     async update(
       id: number,
       data: {
+        processing_paused?: boolean;
         status?: VideoStatus | string;
         watch_status?: WatchStatus | string;
         chatgpt_link?: string | null;

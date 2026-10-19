@@ -76,6 +76,7 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
           </div>
         </div>
 
+        {user && <nav aria-label="Library" className="flex gap-3 text-sm text-neutral-300"><a href="/dashboard/videos" className="hover:text-white">Videos</a><a href="/dashboard/channels" className="hover:text-white">Channels</a></nav>}
         {/* Right side controls */}
         {user && (
           <div className="flex items-center space-x-3">

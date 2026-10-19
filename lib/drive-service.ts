@@ -144,8 +144,8 @@ export async function syncOnePendingSubtitle(userId: string) {
     .bind(userId).first<{ connected: number }>();
   if (!connection) return null;
   const row = await db.prepare(`SELECT id, video_id, title, subtitle_text, drive_retry_count, drive_last_attempt_at
-    FROM videos WHERE user_id = ? AND status = 'COMPLETED' AND drive_file_id IS NULL AND subtitle_text IS NOT NULL
-    ORDER BY created_at ASC LIMIT 1`).bind(userId).first<{
+    FROM videos WHERE user_id = ? AND status = 'COMPLETED' AND processing_paused = 0 AND drive_file_id IS NULL AND subtitle_text IS NOT NULL
+    ORDER BY coalesce(drive_last_attempt_at, '') ASC, created_at ASC LIMIT 1`).bind(userId).first<{
       id: number; video_id: string; title: string; subtitle_text: string; drive_retry_count: number; drive_last_attempt_at: string | null;
     }>();
   if (!row) return null;
@@ -156,8 +156,8 @@ export async function syncOnePendingSubtitle(userId: string) {
   if (Date.now() - last < delayMs) return null;
   const now = new Date().toISOString();
   const claim = await db.prepare(`UPDATE videos SET drive_last_attempt_at = ?, drive_retry_count = drive_retry_count + 1, updated_at = ?
-    WHERE id = ? AND user_id = ? AND status = 'COMPLETED' AND drive_file_id IS NULL
-    AND (drive_last_attempt_at IS NULL OR drive_last_attempt_at <= ?)`).bind(now, now, row.id, userId, new Date(Date.now() - delayMs).toISOString()).run();
+    WHERE id = ? AND user_id = ? AND status = 'COMPLETED' AND processing_paused = 0 AND drive_file_id IS NULL
+    AND drive_retry_count = ? AND (drive_last_attempt_at IS NULL OR drive_last_attempt_at <= ?)`).bind(now, now, row.id, userId, retryCount, new Date(Date.now() - delayMs).toISOString()).run();
   if (!claim.meta.changes) return null;
 
   const attempt = retryCount + 1;
@@ -165,7 +165,7 @@ export async function syncOnePendingSubtitle(userId: string) {
     const uploaded = await uploadSubtitle(userId, row.title, row.subtitle_text);
     if (!uploaded.id) throw new Error("Google Drive did not return a file ID.");
     const driveFileUrl = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
-    await db.prepare(`UPDATE videos SET drive_file_id = ?, drive_file_url = ?, progress_message = 'Subtitles ready and synced to Google Drive', error_message = NULL, updated_at = ?
+    await db.prepare(`UPDATE videos SET drive_file_id = ?, drive_file_url = ?, progress_message = 'Subtitles ready and synced to Google Drive', error_message = NULL, error_category = NULL, updated_at = ?
       WHERE id = ? AND user_id = ? AND drive_file_id IS NULL`).bind(
       uploaded.id,
       driveFileUrl,
@@ -174,7 +174,7 @@ export async function syncOnePendingSubtitle(userId: string) {
     return { video_id: row.video_id, drive_file_id: uploaded.id, drive_file_url: driveFileUrl };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Google Drive upload failed.";
-    await db.prepare("UPDATE videos SET progress_message = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    await db.prepare("UPDATE videos SET error_category = 'DRIVE_UPLOAD', error_message = 'Drive upload failed; downloaded subtitles are saved', progress_message = ?, updated_at = ? WHERE id = ? AND user_id = ?")
       .bind(`Drive upload retry #${attempt}: ${message}`, new Date().toISOString(), row.id, userId).run();
     return null;
   }

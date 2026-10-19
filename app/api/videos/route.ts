@@ -1,7 +1,7 @@
 import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, retryVideo, type LibraryVideo } from "../../../lib/server-api";
 import { syncOnePendingSubtitle } from "../../../lib/drive-service";
 
-const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at";
+const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at, processing_paused, error_category";
 
 function videoIdsFromUrl(rawUrl: string, playlistHtml = "") {
   const url = new URL(rawUrl);
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   if (tag !== "ALL") { clauses.push("(lower(coalesce(channel_tags, '')) LIKE ? OR channel_title IN (SELECT channel_title FROM channel_tags WHERE user_id = ? AND lower(tag) = ?))"); binds.push(`%${tag}%`, user.userId, tag); }
   const where = clauses.join(" AND ");
 
-  const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' AND processing_source <> 'LOCAL' ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
+  const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' AND processing_source <> 'LOCAL' AND processing_paused = 0 ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
   if (due) await retryVideo(Number(due.id), user.userId);
 
   const totalRow = await db.prepare(`SELECT COUNT(*) AS total FROM videos WHERE ${where}`).bind(...binds).first<{ total: number }>();

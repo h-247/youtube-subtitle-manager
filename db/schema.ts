@@ -23,6 +23,8 @@ export const videos = sqliteTable("videos", {
   driveRetryCount: integer("drive_retry_count").notNull().default(0),
   driveLastAttemptAt: text("drive_last_attempt_at"),
   chatgptLink: text("chatgpt_link"),
+  processingPaused: integer("processing_paused").notNull().default(0),
+  errorCategory: text("error_category"),
   retryCount: integer("retry_count").notNull().default(0),
   progressMessage: text("progress_message"),
   errorMessage: text("error_message"),
@@ -67,3 +69,9 @@ export const localSyncTokens = sqliteTable("local_sync_tokens", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   revokedAt: text("revoked_at"),
 }, (table) => [index("ix_local_sync_tokens_user").on(table.userId)]);
+
+export const syncTombstones = sqliteTable("sync_tombstones", {
+  userId: text("user_id").notNull(),
+  videoId: text("video_id").notNull(),
+  deletedAt: text("deleted_at").notNull(),
+}, table => [uniqueIndex("uq_sync_tombstone").on(table.userId, table.videoId)]);

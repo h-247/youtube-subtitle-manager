@@ -6,7 +6,7 @@ const fields = [
   "video_id", "youtube_url", "title", "channel_title", "channel_url", "duration", "thumbnail_url",
   "status", "watch_status", "channel_tags", "subtitle_type", "subtitle_language", "subtitle_text",
   "drive_file_id", "drive_file_url", "chatgpt_link", "retry_count", "progress_message", "error_message",
-  "created_at", "updated_at", "last_attempt_at", "processing_source",
+  "created_at", "updated_at", "last_attempt_at", "processing_source", "processing_paused", "error_category",
 ] as const;
 
 export async function POST(request: Request) {
@@ -16,18 +16,24 @@ export async function POST(request: Request) {
   if (!body || typeof body.video_id !== "string" || !/^[\w-]{11}$/.test(body.video_id) || !body.title || !body.youtube_url) {
     return errorResponse("A valid local video record is required.");
   }
+  if (typeof body.created_at !== "string" || !Number.isFinite(Date.parse(body.created_at))) return errorResponse("A valid creation timestamp is required.");
   const db = database();
-  const values = fields.map((field) => field === "processing_source" ? "LOCAL" : (body[field] ?? null));
+  const tombstone = await db.prepare("SELECT deleted_at FROM sync_tombstones WHERE user_id = ? AND video_id = ?").bind(userId, body.video_id).first<{deleted_at: string}>();
+  if (tombstone && (!body.created_at || Date.parse(body.created_at) <= Date.parse(tombstone.deleted_at))) {
+    return json({ synced: true, deleted: true });
+  }
+  const values = fields.map((field) => field === "processing_source" ? "LOCAL" : field === "processing_paused" ? Number(body.processing_paused || 0) : (body[field] ?? null));
   const names = ["user_id", ...fields];
   const updates = fields.slice(1).map((field) =>
     field === "drive_file_id" || field === "drive_file_url"
       ? `${field} = coalesce(excluded.${field}, videos.${field})`
       : `${field} = excluded.${field}`,
   ).join(", ");
-  await db.prepare(`INSERT INTO videos (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})
+  await db.prepare(`INSERT INTO videos (${names.join(", ")}) SELECT ${names.map(() => "?").join(", ")}
+    WHERE NOT EXISTS (SELECT 1 FROM sync_tombstones WHERE user_id = ? AND video_id = ? AND julianday(deleted_at) >= julianday(?))
     ON CONFLICT(user_id, video_id) DO UPDATE SET ${updates}
     WHERE coalesce(excluded.updated_at, '') >= coalesce(videos.updated_at, '')`)
-    .bind(userId, ...values).run();
+    .bind(userId, ...values, userId, body.video_id, body.created_at).run();
   const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ id: number }>();
   // Mirror accepted local tag edits into the channel-level table as well.

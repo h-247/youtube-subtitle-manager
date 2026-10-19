@@ -24,11 +24,13 @@ export default function EditModal({
   const [subtitleStatus, setSubtitleStatus] = useState<VideoStatus>("COMPLETED");
   const [channelTags, setChannelTags] = useState("");
   const [chatgptLink, setChatgptLink] = useState("");
+  const [paused, setPaused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (video) {
+      setPaused(!!video.processing_paused);
       setWatchStatus(video.watch_status || "TO_DO");
       setSubtitleStatus(video.status);
       setChannelTags(video.channel_tags || "");
@@ -63,6 +65,7 @@ export default function EditModal({
 
     try {
       const updated = await api.videos.update(video.id, {
+        processing_paused: paused,
         watch_status: watchStatus,
         status: subtitleStatus,
         channel_tags: channelTags.trim() || null,
@@ -98,6 +101,8 @@ export default function EditModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {(video.status === "PROCESSING" || video.status === "COMPLETED") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={paused} onChange={e => setPaused(e.target.checked)} /> Pause automatic retries</label>}
+          {video.error_category && <p className="text-xs text-amber-300">{video.error_category}: {video.error_message}</p>}
           {/* Watch Status */}
           <div>
             <label className="block text-xs font-semibold text-neutral-300 uppercase mb-1">

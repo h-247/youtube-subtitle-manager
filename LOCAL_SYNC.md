@@ -18,3 +18,20 @@ library available when the laptop is offline.
 Run one local backend process per DB. PROCESSING downloads resume after restart,
 with DOWNLOAD_CONCURRENCY=2 by default. Failed attempts release their slot.
 Integration tests and CI live in the companion GitHub repository.
+
+
+Sites retains deletion tombstones per account and video. A replay from a record
+created before deletion acknowledges with `synced: true, deleted: true` and does
+not recreate the video. A deliberate new ingestion with a later creation date is
+allowed. Deletion and its tombstone commit together in a D1 batch. Laptop updates
+also use a tombstone guard in their INSERT statement to cover concurrent deletion.
+
+Sites commits subtitle text before the independent Drive upload queue. Upload
+errors retain the text, set `error_category=DRIVE_UPLOAD`, and retry with capped
+backoff. Download failures use `DOWNLOAD`. Edit Video Record exposes Pause automatic
+retries for both download and upload; pause state is included in library sync.
+Pending Drive uploads rotate by last attempt so one outage does not starve others.
+
+Run `node --test tests/sync-recovery.mjs` for D1-compatible SQLite coverage of
+idempotent delivery, deletion replay after re-pairing, and independent Drive retry
+with saved text and pause/resume.

@@ -28,6 +28,8 @@ export interface Video {
   drive_file_id: string | null;
   drive_file_url: string | null;
   chatgpt_link: string | null;
+  processing_paused?: boolean;
+  error_category?: string | null;
   retry_count: number;
   progress_message: string | null;
   error_message: string | null;

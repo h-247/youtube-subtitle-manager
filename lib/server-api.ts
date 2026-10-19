@@ -20,6 +20,8 @@ export type LibraryVideo = {
   drive_file_id: string | null;
   drive_file_url: string | null;
   chatgpt_link: string | null;
+  processing_paused?: boolean | number;
+  error_category?: string | null;
   retry_count: number;
   progress_message: string | null;
   error_message: string | null;
@@ -65,6 +67,8 @@ export function videoFromRow(row: Record<string, unknown>): LibraryVideo {
     drive_file_id: row.drive_file_id == null ? null : String(row.drive_file_id),
     drive_file_url: row.drive_file_url == null ? null : String(row.drive_file_url),
     chatgpt_link: row.chatgpt_link == null ? null : String(row.chatgpt_link),
+    processing_paused: Boolean(row.processing_paused),
+    error_category: row.error_category == null ? null : String(row.error_category),
     retry_count: Number(row.retry_count || 0),
     progress_message: row.progress_message == null ? null : String(row.progress_message),
     error_message: row.error_message == null ? null : String(row.error_message),
@@ -524,7 +528,7 @@ export async function downloadEnglishCaptions(player: Record<string, any> | null
 
 export async function retryVideo(videoId: number, userId: string) {
   const db = database();
-  const existing = await db.prepare("SELECT * FROM videos WHERE id = ? AND user_id = ? AND status = 'PROCESSING'").bind(videoId, userId).first<LibraryVideo>();
+  const existing = await db.prepare("SELECT * FROM videos WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND processing_paused = 0").bind(videoId, userId).first<LibraryVideo>();
   if (!existing) return;
   const retryCount = Number(existing.retry_count || 0);
   const last = existing.last_attempt_at ? Date.parse(existing.last_attempt_at) : 0;
@@ -536,8 +540,8 @@ export async function retryVideo(videoId: number, userId: string) {
   if (Date.now() - last < delayMs) return;
   const now = new Date().toISOString();
   const claim = await db.prepare(
-    "UPDATE videos SET last_attempt_at = ?, retry_count = retry_count + 1, progress_message = ?, error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND (last_attempt_at IS NULL OR last_attempt_at <= ?)"
-  ).bind(now, retryCount ? `Retrying subtitle download (attempt ${retryCount + 1})…` : "Reading video details and finding English captions…", now, videoId, userId, new Date(Date.now() - delayMs).toISOString()).run();
+    "UPDATE videos SET last_attempt_at = ?, retry_count = retry_count + 1, progress_message = ?, error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND processing_paused = 0 AND retry_count = ? AND (last_attempt_at IS NULL OR last_attempt_at <= ?)"
+  ).bind(now, retryCount ? `Retrying subtitle download (attempt ${retryCount + 1})…` : "Reading video details and finding English captions…", now, videoId, userId, retryCount, new Date(Date.now() - delayMs).toISOString()).run();
   if (!claim.meta.changes) return;
 
   const attempt = retryCount + 1;
@@ -582,13 +586,13 @@ export async function retryVideo(videoId: number, userId: string) {
     }
     const finished = new Date().toISOString();
     await db.prepare(
-      "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING'"
+      "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, error_category = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND processing_paused = 0"
     ).bind(result.type, result.language, result.subtitle, metadata?.channelTitle ?? null, metadata?.channelUrl ?? null, metadata?.duration ?? null, metadata?.thumbnailUrl ?? null, finished, videoId, userId).run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Subtitle download failed.";
     const failedAt = new Date().toISOString();
     await db.prepare(
-      "UPDATE videos SET progress_message = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING'"
+      "UPDATE videos SET error_category = 'DOWNLOAD', progress_message = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND processing_paused = 0"
     ).bind(`Retry #${attempt}: ${message}`, message, failedAt, videoId, userId).run();
   }
 }
