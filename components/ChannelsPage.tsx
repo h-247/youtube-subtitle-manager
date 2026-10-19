@@ -135,7 +135,7 @@ export default function ChannelsPage() {
   return (
     <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
       <Navbar onOpenIngest={() => setIsIngestOpen(true)} />
-      <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-3 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1360px] flex-1 px-4 py-3 sm:px-6 lg:px-8">
         <h1 className="sr-only">Channels</h1>
         <div className="mb-3 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
@@ -188,7 +188,7 @@ export default function ChannelsPage() {
           </div>
         ) : (
           <section aria-label="Channel library">
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),340px))] items-start gap-4">
+            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {channelCards.map(({ channel, channelVideos, nextVideo, watchedCount, subtitlesCount }) => {
                 const progress = channel.video_count ? Math.round((watchedCount / channel.video_count) * 100) : 0;
                 const detailHref = `/dashboard/channels/${encodeURIComponent(channel.channel_title)}`;
