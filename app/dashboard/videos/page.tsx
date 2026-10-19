@@ -184,6 +184,20 @@ function DashboardContent() {
     return () => clearInterval(intervalId);
   }, [videos, loadVideos]);
 
+  // Receive tag edits made on the paired app even when no download is active.
+  useEffect(() => {
+    if (!user || editingVideo || taggingChannel || isIngestOpen) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void loadVideos(true);
+        void loadTags();
+      }
+    };
+    const interval = window.setInterval(refresh, 10000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
+  }, [user, editingVideo, taggingChannel, isIngestOpen, loadVideos, loadTags]);
+
   const startIngestion = useCallback(
     (url: string) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;

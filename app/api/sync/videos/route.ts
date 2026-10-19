@@ -45,6 +45,9 @@ export async function POST(request: Request) {
       .bind(userId, body.channel_title, userId, body.video_id, body.updated_at)];
     for (const tag of tags) statements.push(db.prepare(`INSERT OR IGNORE INTO channel_tags (user_id, channel_title, tag)
       SELECT ?, ?, ? WHERE ${accepted}`).bind(userId, body.channel_title, tag, userId, body.video_id, body.updated_at));
+    // Tags belong to the channel: replace every video copy, including removals.
+    statements.push(db.prepare(`UPDATE videos SET channel_tags = ? WHERE user_id = ? AND channel_title = ? AND ${accepted}`)
+      .bind(tags.join(", ") || null, userId, body.channel_title, userId, body.video_id, body.updated_at));
     await db.batch(statements);
   }
   const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;

@@ -20,6 +20,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const updated = new Date().toISOString();
   await database().prepare("UPDATE videos SET processing_paused = ?, watch_status = ?, status = ?, channel_tags = ?, chatgpt_link = ?, updated_at = ? WHERE id = ? AND user_id = ?")
     .bind(paused, watchStatus, status, channelTags, chatgptLink, updated, id, user.userId).run();
+  if ((data.channel_tags === null || typeof data.channel_tags === "string") && current.channel_title) {
+    const db = database();
+    const tags = (channelTags || "").split(", ").filter(Boolean);
+    const statements = [db.prepare("DELETE FROM channel_tags WHERE user_id = ? AND channel_title = ?").bind(user.userId, current.channel_title)];
+    for (const tag of tags) statements.push(db.prepare("INSERT OR IGNORE INTO channel_tags (user_id, channel_title, tag) VALUES (?, ?, ?)").bind(user.userId, current.channel_title, tag));
+    statements.push(db.prepare("UPDATE videos SET channel_tags = ?, updated_at = ? WHERE user_id = ? AND channel_title = ?").bind(channelTags, updated, user.userId, current.channel_title));
+    await db.batch(statements);
+  }
   const row = await database().prepare(`SELECT ${VIDEO_FIELDS} FROM videos WHERE id = ? AND user_id = ?`).bind(id, user.userId).first<LibraryVideo>();
   return json(row ? videoFromRow(row as unknown as Record<string, unknown>) : null);
 }

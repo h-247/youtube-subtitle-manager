@@ -64,3 +64,25 @@ test("Drive outage retries saved subtitle independently and respects pause", asy
   await drive.syncOnePendingSubtitle("owner"); row = sqlite.prepare("SELECT * FROM videos").get();
   assert.equal(uploads, 2); assert.equal(row.drive_file_id, "saved-file"); assert.equal(row.subtitle_text, "Durable captions");
 });
+
+
+test("channel tags replace all video copies and clear without resurrection", async () => {
+  const sync = await moduleAt("app/api/sync/videos/route.ts");
+  const edit = await moduleAt("app/api/videos/[id]/route.ts");
+  const channels = await moduleAt("app/api/videos/channel-tags/route.ts");
+  await sync.POST(request({...video, channel_title: "Shared", channel_tags: "old"}));
+  await sync.POST(request({...video, video_id: "bcdefghijkl", channel_title: "Shared", channel_tags: "old"}));
+  await sync.POST(request({...video, channel_title: "Shared", channel_tags: "en, it", updated_at: "2021-01-01T00:00:00Z"}));
+  assert.deepEqual(sqlite.prepare("SELECT channel_tags FROM videos").all().map(r => r.channel_tags), ["en, it", "en, it"]);
+  await sync.POST(request({...video, channel_title: "Shared", channel_tags: "stale"}));
+  assert.deepEqual(sqlite.prepare("SELECT tag FROM channel_tags ORDER BY tag").all().map(r => r.tag), ["en", "it"]);
+  await sync.POST(request({...video, channel_title: "Shared", channel_tags: null, updated_at: "2022-01-01T00:00:00Z"}));
+  assert.equal(sqlite.prepare("SELECT count(*) AS n FROM channel_tags").get().n, 0);
+  assert.ok(sqlite.prepare("SELECT channel_tags FROM videos").all().every(r => r.channel_tags === null));
+  await edit.PATCH(request({channel_tags: "ss"}), {params: Promise.resolve({id: "1"})});
+  assert.equal(sqlite.prepare("SELECT tag FROM channel_tags").get().tag, "ss");
+  assert.ok(sqlite.prepare("SELECT channel_tags FROM videos").all().every(r => r.channel_tags === "ss"));
+  await channels.POST(request({channel_title: "Shared", tags: ""}));
+  assert.equal(sqlite.prepare("SELECT count(*) AS n FROM channel_tags").get().n, 0);
+  assert.ok(sqlite.prepare("SELECT channel_tags FROM videos").all().every(r => r.channel_tags === null));
+});
