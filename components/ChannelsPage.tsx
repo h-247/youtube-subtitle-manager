@@ -193,9 +193,6 @@ export default function ChannelsPage() {
                 const detailHref = `/dashboard/channels/${encodeURIComponent(channel.channel_title)}`;
                 return (
                   <article key={channel.channel_title} className="overflow-hidden rounded-xl border border-neutral-800 bg-[#262626]">
-                    <a href={detailHref} aria-label={`View ${channel.channel_title} videos`} className="relative block aspect-video overflow-hidden bg-[#171717]">
-                      {(nextVideo || channelVideos[0])?.thumbnail_url ? <img src={(nextVideo || channelVideos[0])!.thumbnail_url!} alt="" className="h-full w-full object-cover" /> : <Tv className="absolute inset-0 m-auto h-10 w-10 text-neutral-600" />}
-                    </a>
                     <div className="p-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <a href={detailHref} className="line-clamp-1 text-xs font-semibold hover:underline">{channel.channel_title}</a>
