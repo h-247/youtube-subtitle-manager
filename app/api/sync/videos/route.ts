@@ -30,6 +30,17 @@ export async function POST(request: Request) {
     .bind(userId, ...values).run();
   const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ id: number }>();
+  // Mirror accepted local tag edits into the channel-level table as well.
+  // Guard every statement so a newer Site edit cannot be overwritten.
+  if (body.channel_title && typeof body.updated_at === "string") {
+    const tags = [...new Set((body.channel_tags ?? "").split(",").map(tag => tag.trim().replace(/^#/, "").toLowerCase()).filter(Boolean))];
+    const accepted = "EXISTS (SELECT 1 FROM videos WHERE user_id = ? AND video_id = ? AND updated_at = ?)";
+    const statements = [db.prepare(`DELETE FROM channel_tags WHERE user_id = ? AND channel_title = ? AND ${accepted}`)
+      .bind(userId, body.channel_title, userId, body.video_id, body.updated_at)];
+    for (const tag of tags) statements.push(db.prepare(`INSERT OR IGNORE INTO channel_tags (user_id, channel_title, tag)
+      SELECT ?, ?, ? WHERE ${accepted}`).bind(userId, body.channel_title, tag, userId, body.video_id, body.updated_at));
+    await db.batch(statements);
+  }
   const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;
   const current = await db.prepare("SELECT video_id, drive_file_id, drive_file_url FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ video_id: string; drive_file_id: string | null; drive_file_url: string | null }>();
