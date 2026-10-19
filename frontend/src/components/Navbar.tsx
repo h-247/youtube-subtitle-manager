@@ -49,7 +49,7 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
       if (active) setSyncSummary(status.sync_error
         ? `${status.pending_count ?? 0} pending: ${status.sync_error}`
         : status.pending_count ? `${status.pending_count} changes waiting to sync`
-        : status.is_connected ? "Sites sync up to date" : "Sites sync disconnected");
+        : status.is_connected ? "All queued changes sent" : "Sites sync disconnected");
     }).catch(() => { if (active) setSyncSummary("Sync status unavailable; reconnecting automatically"); });
     void refresh();
     const timer = setInterval(refresh, 10000);

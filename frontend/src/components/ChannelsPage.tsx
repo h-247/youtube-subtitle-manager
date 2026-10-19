@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -32,9 +32,11 @@ export default function ChannelsPage() {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
 
-  const loadLibrary = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
+  const refreshing = useRef(false);
+  const loadLibrary = useCallback(async (silent = false) => {
+    if (!user || refreshing.current) return;
+    refreshing.current = true;
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [channelData, tagData, firstPage] = await Promise.all([
@@ -53,6 +55,7 @@ export default function ChannelsPage() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load channels.");
     } finally {
+      refreshing.current = false;
       setLoading(false);
     }
   }, [user]);
@@ -60,6 +63,23 @@ export default function ChannelsPage() {
   useEffect(() => {
     void loadLibrary();
   }, [loadLibrary]);
+
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !isManageOpen && !isIngestOpen) void loadLibrary(true);
+    };
+    const interval = window.setInterval(refresh, 10000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("sites-drive-links-refreshed", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("sites-drive-links-refreshed", refresh);
+    };
+  }, [user, loadLibrary, isManageOpen, isIngestOpen]);
 
   const channelCards = useMemo(() => {
     const query = search.trim().toLowerCase();

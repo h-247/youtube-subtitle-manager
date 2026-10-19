@@ -10,7 +10,7 @@ import time
 
 import httpx
 from sqlalchemy import event, inspect, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from app.database import SessionLocal
 from app.models.user import User
 from app.models.video import Video
@@ -36,6 +36,9 @@ def enqueue_sync(db, video):
 @event.listens_for(Video, "after_insert")
 @event.listens_for(Video, "after_update")
 def record_change(mapper, connection, video):
+    session = object_session(video)
+    if session and session.info.get("sites_pull"):
+        return
     if not any(attr.history.has_changes() for attr in inspect(video).attrs):
         return
     token = connection.execute(select(User.sites_sync_token).where(User.id == video.user_id)).scalar()
@@ -111,14 +114,15 @@ class JobRunner:
 
     def start(self):
         from app.services.ingestion_service import dispatch_pending
-        for action in (dispatch_pending, deliver_pending):
-            def run(action=action):
+        from app.services.sites_sync_service import reconcile_libraries
+        for action, interval in ((dispatch_pending, 1), (deliver_pending, 1), (reconcile_libraries, 15)):
+            def run(action=action, interval=interval):
                 while not self.stop_event.is_set():
                     try:
                         action()
                     except Exception:
                         logger.exception("Background dispatcher failed; retrying")
-                    self.stop_event.wait(1)
+                    self.stop_event.wait(interval)
             thread = threading.Thread(target=run, daemon=True)
             self.threads.append(thread)
             thread.start()

@@ -69,3 +69,12 @@ SQLite startup creates the outbox automatically. For managed database installs,
 run `alembic upgrade head` before starting the backend. CI runs backend pytest,
 frontend typecheck and production build on every push and pull request. Integration
 tests use temporary SQLite databases and simulated Sites responses, not live accounts.
+
+
+The paired laptop reconciles `/api/sync/library` every 15 seconds: newer Site
+watch status, ChatGPT link, channel tags, and Drive links are pulled without
+creating an outbound echo. Pending local edits take priority until delivered;
+local videos missing on the Site are requeued. The Channels view refreshes every
+10 seconds and on focus/visibility changes while preserving filters and cards.
+The navbar reports queued operations sent, rather than claiming both libraries
+have been fully compared just because the outbox is empty.

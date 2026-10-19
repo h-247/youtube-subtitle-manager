@@ -154,3 +154,46 @@ def test_success_without_acknowledgement_retains_operation(persistent_db, monkey
     with persistent_db() as db:
         op = db.query(SyncOperation).one()
         assert op.attempts == 1 and op.error
+
+
+def test_reconcile_pulls_newer_site_tags_without_echo(persistent_db, monkeypatch):
+    from app.services.sites_sync_service import reconcile_library
+    from app.models.channel_tag import ChannelTag
+    payload = {"items": [{"video_id": "abcdefghijk", "updated_at": "2030-01-01T00:00:00Z", "watch_status": "DOING",
+                          "channel_tags": "en", "chatgpt_link": "https://chatgpt.com/c/example"}],
+               "channel_tags": [{"channel_title": "Channel", "tag": "en"}], "next_offset": None}
+    monkeypatch.setattr(jobs.httpx, "get", Mock(return_value=httpx.Response(200, json=payload, request=httpx.Request("GET", "https://example.com"))))
+    with persistent_db() as db:
+        db.query(SyncOperation).delete()
+        video = db.get(Video, 1)
+        video.channel_title = "Channel"
+        db.commit()
+        db.query(SyncOperation).delete()
+        db.commit()
+        result = reconcile_library(db, db.get(User, 1))
+        assert result == {"pulled": 1, "queued": 0}
+        assert video.watch_status == "DOING" and video.channel_tags == "en"
+        assert db.query(ChannelTag).one().tag == "en"
+        assert db.query(SyncOperation).count() == 0
+        assert reconcile_library(db, db.get(User, 1)) == {"pulled": 0, "queued": 0}
+
+
+def test_reconcile_preserves_pending_local_edits(persistent_db, monkeypatch):
+    from app.services.sites_sync_service import reconcile_library
+    payload = {"items": [{"video_id": "abcdefghijk", "updated_at": "2030-01-01T00:00:00Z", "watch_status": "DONE"}], "channel_tags": [], "next_offset": None}
+    monkeypatch.setattr(jobs.httpx, "get", Mock(return_value=httpx.Response(200, json=payload, request=httpx.Request("GET", "https://example.com"))))
+    with persistent_db() as db:
+        assert reconcile_library(db, db.get(User, 1)) == {"pulled": 0, "queued": 0}
+        assert db.get(Video, 1).watch_status == "TO_DO"
+        assert db.query(SyncOperation).count() == 1
+
+
+def test_reconcile_requeues_missing_site_record_once(persistent_db, monkeypatch):
+    from app.services.sites_sync_service import reconcile_library
+    monkeypatch.setattr(jobs.httpx, "get", Mock(return_value=httpx.Response(200, json={"items": [], "channel_tags": [], "next_offset": None}, request=httpx.Request("GET", "https://example.com"))))
+    with persistent_db() as db:
+        db.query(SyncOperation).delete()
+        db.commit()
+        assert reconcile_library(db, db.get(User, 1)) == {"pulled": 0, "queued": 1}
+        assert reconcile_library(db, db.get(User, 1)) == {"pulled": 0, "queued": 0}
+        assert db.query(SyncOperation).count() == 1

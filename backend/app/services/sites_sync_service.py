@@ -1,8 +1,7 @@
 import base64
 import hashlib
 import logging
-import time
-from threading import Thread
+from datetime import datetime, timezone
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -162,3 +161,95 @@ def sync_user_async(user_id: int) -> None:
             from app.services.durable_jobs import enqueue_sync
             enqueue_sync(db, video)
         db.commit()
+
+
+def _timestamp(value):
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        raise ValueError("Invalid library timestamp")
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def reconcile_library(db: Session, user: User) -> dict:
+    """Pull newer Site edits and repair missing outbound records without echoing pulls."""
+    from app.models.sync_operation import SyncOperation
+    from app.models.channel_tag import ChannelTag
+    from app.services.durable_jobs import enqueue_sync
+    if not user.sites_sync_token:
+        return {"pulled": 0, "queued": 0}
+    headers = _site_headers(decrypt_token(user.sites_sync_token))
+    remote = {}
+    channel_tags = {}
+    offset = 0
+    # Complete and validate the snapshot before making any local mutations.
+    while True:
+        response = httpx.get(settings.SITES_SYNC_URL.rstrip('/') + '/api/sync/library',
+                             headers=headers, params={"offset": offset}, timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload.get("items"), list) or not isinstance(payload.get("channel_tags"), list):
+            raise ValueError("Invalid Sites library snapshot")
+        for item in payload["items"]:
+            if not isinstance(item, dict) or not isinstance(item.get("video_id"), str):
+                raise ValueError("Invalid Sites library item")
+            _timestamp(item.get("updated_at"))
+            remote[item["video_id"]] = item
+        for item in payload["channel_tags"]:
+            if not isinstance(item, dict) or not isinstance(item.get("channel_title"), str) or not isinstance(item.get("tag"), str):
+                raise ValueError("Invalid Sites channel tag")
+            channel_tags.setdefault(item["channel_title"], set()).add(item["tag"])
+        next_offset = payload.get("next_offset")
+        if next_offset is None:
+            break
+        if not isinstance(next_offset, int) or next_offset <= offset:
+            raise ValueError("Invalid Sites library pagination")
+        offset = next_offset
+    pending = {item.video_id for item in db.query(SyncOperation).filter(SyncOperation.user_id == user.id).all()}
+    videos = db.query(Video).filter(Video.user_id == user.id).all()
+    pending_channels = {v.channel_title for v in videos if v.video_id in pending}
+    pulled = queued = 0
+    db.info["sites_pull"] = True
+    try:
+        for video in videos:
+            if video.video_id in pending:
+                continue
+            item = remote.get(video.video_id)
+            if item is None:
+                enqueue_sync(db, video)
+                queued += 1
+                continue
+            if _timestamp(item["updated_at"]) <= _timestamp(video.updated_at):
+                continue
+            if item.get("watch_status") in {"TO_DO", "DOING", "DONE"}:
+                video.watch_status = item["watch_status"]
+            video.chatgpt_link = item.get("chatgpt_link")
+            if video.channel_title not in pending_channels:
+                tags = channel_tags.get(video.channel_title, set()) | {
+                    tag.strip().lstrip("#").lower() for tag in (item.get("channel_tags") or "").split(",") if tag.strip()
+                }
+                video.channel_tags = ", ".join(sorted(tags)) or None
+                db.query(ChannelTag).filter(ChannelTag.user_id == user.id, ChannelTag.channel_title == video.channel_title).delete()
+                for tag in sorted(tags):
+                    db.add(ChannelTag(user_id=user.id, channel_title=video.channel_title, tag=tag))
+            if item.get("drive_file_id") and item.get("drive_file_url"):
+                video.drive_file_id = item["drive_file_id"]
+                video.drive_file_url = item["drive_file_url"]
+            video.updated_at = _timestamp(item["updated_at"])
+            pulled += 1
+        db.commit()
+    finally:
+        db.info.pop("sites_pull", None)
+    return {"pulled": pulled, "queued": queued}
+
+
+def reconcile_libraries() -> None:
+    with SessionLocal() as db:
+        user_ids = [item.id for item in db.query(User).filter(User.sites_sync_token.isnot(None)).all()]
+    for user_id in user_ids:
+        with SessionLocal() as db:
+            try:
+                reconcile_library(db, db.get(User, user_id))
+            except Exception:
+                db.rollback()
+                logger.warning("Could not reconcile Sites library for local user %s; retrying", user_id)
