@@ -38,6 +38,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   const row = await db.prepare("SELECT video_id FROM videos WHERE id = ? AND user_id = ?").bind(id, user.userId).first<{video_id: string}>();
   if (!row) return errorResponse("Video record not found.", 404);
   await db.batch([
+    db.prepare("UPDATE playlist_cleanup_jobs SET state = 'CANCELLED' WHERE user_id = ? AND video_id = ? AND state IN ('PENDING','FAILED')").bind(user.userId,row.video_id),
     db.prepare("INSERT INTO sync_tombstones (user_id, video_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT(user_id, video_id) DO UPDATE SET deleted_at = excluded.deleted_at").bind(user.userId, row.video_id, new Date().toISOString()),
     db.prepare("DELETE FROM videos WHERE id = ? AND user_id = ?").bind(id, user.userId),
   ]);

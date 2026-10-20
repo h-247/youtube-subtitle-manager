@@ -1,4 +1,4 @@
-import { VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
+import { YouTubeStatus, VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
 
 const API_BASE = "/api";
 
@@ -40,6 +40,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  youtube: {
+    getStatus: () => request<YouTubeStatus>("/youtube/status"),
+    retry: () => request("/youtube/retry", {method: "POST"}),
+    disconnect: () => request("/youtube/disconnect", {method: "POST"}),
+  },
   auth: {
     async getMe(): Promise<User> {
       return request<User>("/auth/me");

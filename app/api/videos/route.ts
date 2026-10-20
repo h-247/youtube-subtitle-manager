@@ -1,4 +1,4 @@
-import { readPlaylist } from "../../../lib/playlist";
+import { readManagedPlaylist, enqueuePlaylistRemoval, processOnePlaylistRemoval } from "../../../lib/youtube-playlists";
 import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, retryVideo, type LibraryVideo } from "../../../lib/server-api";
 import { syncOnePendingSubtitle } from "../../../lib/drive-service";
 
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
   const db = database();
   const url = new URL(request.url);
   await syncOnePendingSubtitle(user.userId);
+  await processOnePlaylistRemoval(user.userId);
   const search = url.searchParams.get("search")?.trim() ?? "";
   const status = url.searchParams.get("status")?.trim().toUpperCase() ?? "ALL";
   const watchStatus = url.searchParams.get("watch_status")?.trim().toUpperCase() ?? "ALL";
@@ -60,12 +61,12 @@ export async function POST(request: Request) {
   if (!["video", "playlist"].includes(mode)) return errorResponse("Choose Single video or YouTube playlist.");
   if (body.tags !== undefined && (!Array.isArray(body.tags) || !body.tags.every(t => typeof t === "string"))) return errorResponse("Video tags must be a list of names.");
   let incoming = Array.isArray(body.tags) ? [...new Set((body.tags as string[]).map(t => t.trim().replace(/^#/, "")).filter(Boolean))] : [];
-  let source: Array<{video_id: string; title: string; channel_title: string | null; channel_url: string | null; thumbnail_url: string | null; duration: number | null}>;
+  let source: Array<{video_id: string; title: string; channel_title: string | null; channel_url: string | null; thumbnail_url: string | null; duration: number | null; playlist_item_id?: string}>;
   try {
     if (mode === "playlist") {
       const id = url.searchParams.get("list");
       if (!id) return errorResponse("Playlist mode requires a YouTube playlist URL.");
-      const playlist = await readPlaylist(id);
+      const playlist = await readManagedPlaylist(user.userId, id);
       incoming = [playlist.title]; source = playlist.videos;
     } else {
       if (url.pathname === "/playlist") return errorResponse("Choose YouTube playlist to import a playlist.");
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
         .bind(user.userId, item.video_id, videoUrl, item.title, item.channel_title, item.channel_url, item.thumbnail_url || `https://i.ytimg.com/vi/${item.video_id}/hqdefault.jpg`, item.duration, JSON.stringify(tags), tags.join(", ") || null, now, now).run();
       processed++;
     }
+    if (mode === "playlist" && item.playlist_item_id) await enqueuePlaylistRemoval(user.userId,item.video_id,[{playlist_id:url.searchParams.get("list"),playlist_item_id:item.playlist_item_id}]);
     const row = await db.prepare("SELECT * FROM videos WHERE user_id = ? AND video_id = ?").bind(user.userId, item.video_id).first<LibraryVideo>();
     results.push({ video_id: item.video_id, title: item.title, status: row?.status, subtitle_type: row?.subtitle_type, is_duplicate: !!current && (current.status === "COMPLETED" || current.status === "PROCESSING"), video: row ? videoFromRow(row as unknown as Record<string, unknown>) : null });
   }

@@ -7,7 +7,7 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
 const DRIVE_FOLDER_NAME = "YouTube Subtitles";
 
-type StoredTokens = { access_token: string; refresh_token: string; expires_at: number; scope: string };
+export type StoredTokens = { access_token: string; refresh_token: string; expires_at: number; scope: string };
 
 function encode(bytes: Uint8Array) {
   let binary = "";
@@ -31,13 +31,13 @@ async function encryptionKey() {
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
-async function encryptTokens(tokens: StoredTokens) {
+export async function encryptTokens(tokens: StoredTokens) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await encryptionKey(), new TextEncoder().encode(JSON.stringify(tokens)));
   return `${encode(iv)}.${encode(new Uint8Array(ciphertext))}`;
 }
 
-async function decryptTokens(value: string): Promise<StoredTokens> {
+export async function decryptTokens(value: string): Promise<StoredTokens> {
   const [iv, ciphertext] = value.split(".");
   if (!iv || !ciphertext) throw new Error("Stored Google Drive credentials are invalid.");
   const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: decode(iv) }, await encryptionKey(), decode(ciphertext));

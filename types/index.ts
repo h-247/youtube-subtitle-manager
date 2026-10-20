@@ -80,3 +80,9 @@ export interface ChannelItem {
   tags: string[];
   video_count: number;
 }
+
+export type YouTubeStatus = {
+  is_configured: boolean; is_connected: boolean; connection_error?: string | null;
+  connect_url: string; pending_count: number; removed_count: number; failed_count: number;
+  jobs: Array<{video_id: string; playlist_id: string; state: string; error: string | null}>;
+};

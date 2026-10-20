@@ -79,7 +79,11 @@ function DashboardContent() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (searchParams.get("drive_connected") === "true") {
+    if (searchParams.get("youtube_connected") === "true") {
+      setBannerMessage("YouTube connected. Imported playlist entries will be removed after subtitles are saved.");
+    } else if (searchParams.get("youtube_error")) {
+      setBannerMessage(searchParams.get("youtube_error"));
+    } else if (searchParams.get("drive_connected") === "true") {
       setBannerMessage("Google Drive connected. Completed subtitles will sync as the dashboard refreshes.");
     } else if (searchParams.get("drive_error")) {
       setBannerMessage(`Drive Connection Error: ${searchParams.get("drive_error")}`);

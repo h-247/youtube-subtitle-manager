@@ -76,3 +76,27 @@ export const syncTombstones = sqliteTable("sync_tombstones", {
   videoId: text("video_id").notNull(),
   deletedAt: text("deleted_at").notNull(),
 }, table => [uniqueIndex("uq_sync_tombstone").on(table.userId, table.videoId)]);
+
+export const youtubeConnections = sqliteTable("youtube_connections", {
+  userId: text("user_id").primaryKey(),
+  encryptedCredentials: text("encrypted_credentials").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+export const youtubeOauthStates = sqliteTable("youtube_oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});
+export const playlistCleanupJobs = sqliteTable("playlist_cleanup_jobs", {
+  id: integer("id").primaryKey({autoIncrement: true}),
+  userId: text("user_id").notNull(),
+  videoId: text("video_id").notNull(),
+  playlistId: text("playlist_id").notNull(),
+  playlistItemId: text("playlist_item_id").notNull(),
+  state: text("state").notNull().default("PENDING"),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttempt: integer("next_attempt").notNull().default(0),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  error: text("error"),
+  updatedAt: text("updated_at").notNull(),
+}, t => [uniqueIndex("uq_playlist_cleanup_item").on(t.userId, t.playlistItemId), index("ix_playlist_cleanup_due").on(t.userId, t.state, t.nextAttempt)]);

@@ -1,3 +1,4 @@
+import {enqueuePlaylistRemoval} from "../../../../lib/youtube-playlists";
 import { authenticatedLocalUser } from "../../../../lib/local-sync-auth";
 import { database, errorResponse, json, type LibraryVideo } from "../../../../lib/server-api";
 import { syncOnePendingSubtitle } from "../../../../lib/drive-service";
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     .bind(userId, ...values, userId, body.video_id, body.created_at).run();
   const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ id: number }>();
+  await enqueuePlaylistRemoval(userId,body.video_id,body.playlist_items);
   const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;
   const current = await db.prepare("SELECT video_id, drive_file_id, drive_file_url FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ video_id: string; drive_file_id: string | null; drive_file_url: string | null }>();

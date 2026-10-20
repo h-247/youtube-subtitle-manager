@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
+import YouTubePlaylistConnection from "./YouTubePlaylistConnection";
 import { api } from "../lib/api";
 import { VideoIngestInput } from "../types";
 
@@ -11,10 +12,11 @@ export default function IngestModal({ isOpen, onClose, onStart }: {
   const [available, setAvailable] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
+  const [youtubeReady, setYoutubeReady] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     if (isOpen) { let active = true; void api.videos.getTags().then(v => { if (active) setAvailable(v); }).catch(() => {}); return () => { active = false; }; }
-    setUrl(""); setTags([]); setDraft(""); setError("");
+    setUrl(""); setTags([]); setDraft(""); setError(""); setYoutubeReady(false);
   }, [isOpen]);
   if (!isOpen) return null;
   const addTag = () => { const tag = draft.trim().replace(/^#/, ""); if (tag) setTags(current => [...new Set([...current, tag])]); setDraft(""); };
@@ -26,6 +28,7 @@ export default function IngestModal({ isOpen, onClose, onStart }: {
       if (mode === "playlist" && !parsed.searchParams.get("list")) throw new Error("Enter a YouTube playlist URL containing list=.");
       if (mode === "video" && parsed.pathname === "/playlist") throw new Error("Choose YouTube playlist to add a playlist.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Enter a valid URL."); return; }
+    if (mode === "playlist" && !youtubeReady) { setError("Connect YouTube before importing a playlist."); return; }
     onStart({url: url.trim(), mode, tags: mode === "video" ? [...new Set([...tags, ...(draft.trim() ? [draft.trim().replace(/^#/, "")] : [])])] : []});
     onClose();
   };
@@ -35,8 +38,9 @@ export default function IngestModal({ isOpen, onClose, onStart }: {
     <form onSubmit={submit} className="space-y-4">
       <label className="block text-sm">{mode === "video" ? "Video URL" : "Playlist URL"}<input aria-label={mode === "video" ? "Video URL" : "Playlist URL"} required type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder={mode === "video" ? "https://www.youtube.com/watch?v=..." : "https://www.youtube.com/playlist?list=..."} className="mt-2 w-full rounded-lg border border-neutral-700 bg-[#191919] px-3 py-2" /></label>
       {mode === "video" ? <fieldset><legend className="mb-2 text-sm">Video tags</legend><div className="mb-2 flex flex-wrap gap-2">{[...new Set([...available, ...tags])].map(tag => <button key={tag} type="button" aria-pressed={tags.includes(tag)} onClick={() => setTags(current => current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag])} className={`rounded-full border px-3 py-1 text-xs ${tags.includes(tag) ? 'bg-white text-black' : 'border-neutral-600'}`}>{tag}</button>)}</div><div className="flex gap-2"><input aria-label="New video tag" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} placeholder="Create a video tag" className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-[#191919] px-3 py-2 text-sm" /><button type="button" onClick={addTag} className="rounded-lg border border-neutral-600 px-3 text-sm">Add tag</button></div><p className="mt-2 text-xs text-neutral-400">Tags apply only to this video. You can leave them empty.</p></fieldset> : <p className="rounded-lg bg-neutral-800 p-3 text-sm text-neutral-300">Every video in the playlist receives the playlist name as a tag. The name is read automatically from YouTube.</p>}
+      {mode === "playlist" && <YouTubePlaylistConnection onReady={setYoutubeReady} />}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      <div className="flex justify-end gap-3"><button type="button" onClick={onClose}>Cancel</button><button className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black" disabled={!url.trim()}>{mode === "video" ? "Add video" : "Add playlist"}</button></div>
+      <div className="flex justify-end gap-3"><button type="button" onClick={onClose}>Cancel</button><button className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black" disabled={!url.trim() || (mode === "playlist" && !youtubeReady)}>{mode === "video" ? "Add video" : "Add playlist"}</button></div>
     </form>
   </section></div>;
 }

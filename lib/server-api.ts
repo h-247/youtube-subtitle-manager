@@ -24,6 +24,7 @@ export type LibraryVideo = {
   error_category?: string | null;
   tags?: string[];
   tags_json?: string | null;
+  playlist_items?: Array<{playlist_id:string;playlist_item_id:string}>;
   retry_count: number;
   progress_message: string | null;
   error_message: string | null;
