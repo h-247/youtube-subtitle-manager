@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../../lib/auth";
 import { api } from "../../../lib/api";
-import { Video } from "../../../types";
+import { VideoIngestInput, videoTags, Video } from "../../../types";
 import Navbar from "../../../components/Navbar";
 import IngestModal from "../../../components/IngestModal";
 import EditModal from "../../../components/EditModal";
@@ -65,11 +65,6 @@ function DashboardContent() {
   // Modals state
   const [isIngestOpen, setIsIngestOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
-  const [taggingChannel, setTaggingChannel] = useState<{ channel_title: string; current_tags: string } | null>(null);
-  const [channelSelectedTags, setChannelSelectedTags] = useState<string[]>([]);
-  const [newChannelTagInput, setNewChannelTagInput] = useState("");
-  const [savingTag, setSavingTag] = useState(false);
-
   // Notification banner from OAuth redirect, notices & toasts
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [ingestionNotices, setIngestionNotices] = useState<IngestionNotice[]>([]);
@@ -186,7 +181,7 @@ function DashboardContent() {
 
   // Receive tag edits made on the paired app even when no download is active.
   useEffect(() => {
-    if (!user || editingVideo || taggingChannel || isIngestOpen) return;
+    if (!user || editingVideo || isIngestOpen) return;
     const refresh = () => {
       if (document.visibilityState === "visible") {
         void loadVideos(true);
@@ -196,10 +191,10 @@ function DashboardContent() {
     const interval = window.setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
-  }, [user, editingVideo, taggingChannel, isIngestOpen, loadVideos, loadTags]);
+  }, [user, editingVideo, isIngestOpen, loadVideos, loadTags]);
 
   const startIngestion = useCallback(
-    (url: string) => {
+    (input: VideoIngestInput) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setIngestionNotices((notices) => [
         { id, kind: "running", message: "Queuing video ingestion in the background…" },
@@ -207,7 +202,7 @@ function DashboardContent() {
       ]);
 
       void api.videos
-        .ingest(url)
+        .ingest(input)
         .then((response) => {
           const kind: IngestionNoticeKind =
             response.failed > 0
@@ -316,41 +311,6 @@ function DashboardContent() {
     } catch (err: any) {
       console.error("Failed to update watch status:", err);
       setToastMessage(err.message || "Failed to update watch status");
-    }
-  };
-
-  const handleToggleChannelModalTag = (tag: string) => {
-    const clean = tag.trim().replace(/^#/, "").toLowerCase();
-    if (!clean) return;
-    if (channelSelectedTags.includes(clean)) {
-      setChannelSelectedTags(channelSelectedTags.filter((t) => t !== clean));
-    } else {
-      setChannelSelectedTags([...channelSelectedTags, clean]);
-    }
-  };
-
-  const handleAddChannelModalNewTag = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const clean = newChannelTagInput.trim().replace(/^#/, "").toLowerCase();
-    if (clean && !channelSelectedTags.includes(clean)) {
-      setChannelSelectedTags([...channelSelectedTags, clean]);
-    }
-    setNewChannelTagInput("");
-  };
-
-  const handleSaveChannelTags = async (channelTitle: string, tags: string) => {
-    setSavingTag(true);
-    try {
-      await api.videos.setChannelTags(channelTitle, tags);
-      setToastMessage(`Updated tags for channel "${channelTitle}"`);
-      setTaggingChannel(null);
-      await loadVideos(true);
-      await loadTags();
-    } catch (err: any) {
-      console.error("Failed to set channel tags:", err);
-      setToastMessage(err.message || "Failed to save channel tags");
-    } finally {
-      setSavingTag(false);
     }
   };
 
@@ -467,7 +427,7 @@ function DashboardContent() {
         <div className="flex items-center space-x-2 mb-4 overflow-x-auto pb-1.5 text-xs scrollbar-thin">
           <div className="flex items-center space-x-1 text-neutral-400 font-medium flex-shrink-0 mr-1">
             <Tag className="w-3.5 h-3.5 text-neutral-400" />
-            <span>Channel Tags:</span>
+            <span>Video Tags:</span>
           </div>
           <button
             onClick={() => {
@@ -500,7 +460,7 @@ function DashboardContent() {
           ))}
           {allTags.length === 0 ? (
             <span className="text-neutral-500 text-xs italic">
-              No tags yet. Click &quot;+ Tag&quot; under video channels or open Channels to assign tags.
+              Choose video tags when adding a video, or edit a video record.
             </span>
           ) : null}
 
@@ -508,10 +468,10 @@ function DashboardContent() {
           <Link
             href="/dashboard/channels"
             className="px-2.5 py-1 rounded-full text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-dashed border-neutral-700 transition flex items-center space-x-1 flex-shrink-0 ml-auto"
-            title="View and manage channels & tags"
+            title="Browse channels"
           >
             <Tv className="w-3 h-3 text-neutral-400" />
-            <span>Manage Channels</span>
+            <span>Browse Channels</span>
           </Link>
         </div>
 
@@ -687,9 +647,9 @@ function DashboardContent() {
                           <ExternalLink className="w-2.5 h-2.5 inline opacity-0 group-hover:opacity-100 transition" />
                         </a>
 
-                        {/* Channel tags display */}
-                        {video.channel_tags ? (
-                          video.channel_tags.split(",").map((t) => {
+                        {/* Video tags */}
+                        {videoTags(video).length ? (
+                          videoTags(video).map((t) => {
                             const cleanTag = t.trim().replace(/^#/, "");
                             if (!cleanTag) return null;
                             return (
@@ -712,28 +672,6 @@ function DashboardContent() {
                           })
                         ) : null}
 
-                        {/* Button to edit/add tags for this channel */}
-                        {video.channel_title && (
-                          <button
-                            onClick={() => {
-                              const existingTags = (video.channel_tags || "")
-                                .split(",")
-                                .map((t) => t.trim().replace(/^#/, "").toLowerCase())
-                                .filter(Boolean);
-                              setTaggingChannel({
-                                channel_title: video.channel_title!,
-                                current_tags: video.channel_tags || "",
-                              });
-                              setChannelSelectedTags(existingTags);
-                              setNewChannelTagInput("");
-                            }}
-                            className="text-[10px] text-neutral-500 hover:text-neutral-300 flex items-center space-x-0.5 hover:underline px-1 py-0.5 rounded transition"
-                            title={`Manage tags for channel ${video.channel_title}`}
-                          >
-                            <Tag className="w-2.5 h-2.5 inline" />
-                            <span>{video.channel_tags ? "Edit Tag" : "+ Tag"}</span>
-                          </button>
-                        )}
                       </div>
 
                       {/* Badges */}
@@ -961,152 +899,7 @@ function DashboardContent() {
         }}
       />
 
-      {/* Channel Tagging Quick Modal */}
-      {taggingChannel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-[#262626] rounded-2xl shadow-2xl max-w-md w-full p-6 border border-neutral-800 text-neutral-100 my-8">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700/80 flex items-center justify-center">
-                <Tag className="w-5 h-5 text-neutral-200" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-base font-bold text-neutral-100">Manage Channel Tags</h3>
-                <p className="text-xs text-neutral-400 truncate">{taggingChannel.channel_title}</p>
-              </div>
-              <button
-                onClick={() => setTaggingChannel(null)}
-                className="text-neutral-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-4">
-              {/* Selected Tags list */}
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 uppercase mb-1.5 flex items-center justify-between">
-                  <span>Assigned Tags:</span>
-                  <span className="text-[11px] font-normal text-neutral-400">Click tag to remove</span>
-                </label>
-                <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 bg-[#1a1a1a] rounded-xl border border-neutral-700">
-                  {channelSelectedTags.length > 0 ? (
-                    channelSelectedTags.map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => handleToggleChannelModalTag(t)}
-                        className="px-2.5 py-1 rounded-md text-xs font-medium bg-white text-neutral-900 flex items-center space-x-1 shadow-sm hover:bg-rose-100 hover:text-rose-900 transition"
-                        title="Click to remove tag"
-                      >
-                        <span>#{t}</span>
-                        <X className="w-3 h-3 ml-1" />
-                      </button>
-                    ))
-                  ) : (
-                    <span className="text-xs text-neutral-500 italic p-0.5">
-                      No tags assigned. Click existing tags below or type a new tag.
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick Select from Existing Tags */}
-              {allTags.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-medium text-neutral-400 mb-1.5">
-                    Previously added tags (click to add/toggle):
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-[#1a1a1a]/60 rounded-lg border border-neutral-800">
-                    {allTags.map((tag) => {
-                      const isSelected = channelSelectedTags.includes(tag.toLowerCase());
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => handleToggleChannelModalTag(tag)}
-                          className={`px-2 py-0.5 rounded text-xs font-medium border transition flex items-center space-x-1 ${
-                            isSelected
-                              ? "bg-neutral-200 text-neutral-900 border-neutral-300 font-semibold"
-                              : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-neutral-200 hover:border-neutral-500"
-                          }`}
-                        >
-                          {isSelected ? (
-                            <Check className="w-3 h-3 text-neutral-900" />
-                          ) : (
-                            <Plus className="w-3 h-3 text-neutral-400" />
-                          )}
-                          <span>#{tag}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Add New Tag Input */}
-              <form onSubmit={handleAddChannelModalNewTag} className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={newChannelTagInput}
-                  onChange={(e) => setNewChannelTagInput(e.target.value)}
-                  placeholder="Type new tag (e.g. en, it, news)..."
-                  className="flex-1 px-3 py-1.5 text-xs bg-[#1a1a1a] border border-neutral-700 rounded-lg text-neutral-100 placeholder-neutral-500 focus:ring-2 focus:ring-neutral-500/50 focus:border-neutral-400 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!newChannelTagInput.trim()}
-                  className="px-3 py-1.5 text-xs font-medium bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 text-neutral-200 rounded-lg transition"
-                >
-                  + Add Tag
-                </button>
-              </form>
-
-              <p className="text-[11px] text-neutral-400">
-                All videos from &quot;{taggingChannel.channel_title}&quot; will receive these tags.
-              </p>
-
-              <div className="flex justify-end space-x-2 pt-3 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => setTaggingChannel(null)}
-                  disabled={savingTag}
-                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-800 rounded-xl transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSaveChannelTags(
-                      taggingChannel.channel_title,
-                      channelSelectedTags.join(", ")
-                    )
-                  }
-                  disabled={savingTag}
-                  className="flex items-center space-x-1.5 px-4 py-2 text-xs font-medium text-neutral-900 bg-white hover:bg-neutral-200 disabled:opacity-50 rounded-xl transition shadow-sm"
-                >
-                  {savingTag && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{savingTag ? "Saving..." : "Save Tags"}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast popup */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center space-x-2.5 bg-neutral-900/95 text-neutral-100 border border-neutral-700 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md">
-          <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          <span className="text-xs font-medium">{toastMessage}</span>
-          <button
-            onClick={() => setToastMessage(null)}
-            className="text-neutral-400 hover:text-white ml-2 text-xs"
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </div>
   );
 }

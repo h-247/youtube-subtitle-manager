@@ -9,11 +9,9 @@ export async function GET(request: Request) {
   const offsetValue = new URL(request.url).searchParams.get("offset") ?? "0";
   if (!/^\d{1,8}$/.test(offsetValue)) return errorResponse("Invalid offset.");
   const rows = await database().prepare(`SELECT video_id, channel_title, watch_status,
-    processing_paused, channel_tags, chatgpt_link, drive_file_id, drive_file_url, updated_at
+    processing_paused, channel_tags, tags_json, chatgpt_link, drive_file_id, drive_file_url, updated_at
     FROM videos WHERE user_id = ? ORDER BY id LIMIT ? OFFSET ?`)
     .bind(userId, PAGE_SIZE, Number(offsetValue)).all();
-  const tags = await database().prepare("SELECT channel_title, tag FROM channel_tags WHERE user_id = ? ORDER BY tag")
-    .bind(userId).all();
-  return json({ items: rows.results ?? [], channel_tags: tags.results ?? [],
+  return json({ items: (rows.results ?? []).map(row => ({ ...row, tags: row.tags_json != null ? JSON.parse(String(row.tags_json)) : String(row.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean) })), channel_tags: [],
     next_offset: (rows.results ?? []).length === PAGE_SIZE ? Number(offsetValue) + PAGE_SIZE : null });
 }

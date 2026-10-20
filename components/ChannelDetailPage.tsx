@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, ExternalLink, Film, Loader2, MessageSquare, Pencil, Play, Save, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ChannelItem, Video, WatchStatus } from "../types";
+import { VideoIngestInput, videoTags, ChannelItem, Video, WatchStatus } from "../types";
 import Navbar from "./Navbar";
 import IngestModal from "./IngestModal";
 
@@ -73,7 +73,7 @@ export default function ChannelDetailPage() {
     catch (reason) { alert(reason instanceof Error ? reason.message : "Could not update status."); }
     finally { setSavingStatusId(null); }
   };
-  const ingest = async (url: string) => { try { await api.videos.ingest(url); await loadChannel(); } catch (reason) { alert(reason instanceof Error ? reason.message : "Could not add videos."); } };
+  const ingest = async (input: VideoIngestInput) => { try { await api.videos.ingest(input); await loadChannel(); } catch (reason) { alert(reason instanceof Error ? reason.message : "Could not add videos."); } };
 
   if (authLoading || !user) return <div className="min-h-screen flex items-center justify-center bg-[#212121]"><Loader2 className="h-8 w-8 animate-spin text-neutral-300" /></div>;
   return <div className="min-h-screen bg-[#212121] text-neutral-100 flex flex-col">
@@ -85,7 +85,6 @@ export default function ChannelDetailPage() {
         <section className="rounded-2xl border border-neutral-800 bg-[#262626] p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-neutral-400"><span className="rounded-full border border-neutral-700 bg-[#1b1b1b] px-3 py-1">Channel</span><span className="rounded-full border border-neutral-700 bg-[#1b1b1b] px-3 py-1">{videos.length} Videos</span><a href={channel.channel_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(channel.channel_title)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-white">Open Channel on YouTube <ExternalLink className="h-3 w-3" /></a></div>
           <h1 className="text-lg font-bold">{channel.channel_title}</h1>
-          <div className="mt-2 flex flex-wrap gap-1.5">{channel.tags.map((tag) => <span key={tag} className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">#{tag}</span>)}</div>
           <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">{[["Total Videos", videos.length], ["Subtitles Ready", ready], ["Watched", `${watched} / ${videos.length}`], ["Watch Progress", `${progress}%`]].map(([label, value]) => <div key={label} className="rounded-xl border border-neutral-800 bg-[#1b1b1b] px-3 py-2"><div className="text-xs text-neutral-400">{label}</div><div className="mt-0.5 text-lg font-semibold">{value}</div></div>)}</div>
         </section>
 

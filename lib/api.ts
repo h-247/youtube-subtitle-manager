@@ -1,4 +1,4 @@
-import { User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
+import { VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
 
 const API_BASE = "/api";
 
@@ -47,10 +47,10 @@ export const api = {
   },
 
   videos: {
-    async ingest(url: string): Promise<VideoIngestResponse> {
+    async ingest(input: VideoIngestInput): Promise<VideoIngestResponse> {
       return request<VideoIngestResponse>("/videos/ingest", {
         method: "POST",
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(input),
       });
     },
 
@@ -81,13 +81,6 @@ export const api = {
       return request<ChannelItem[]>("/videos/channels");
     },
 
-    async setChannelTags(channel_title: string, tags: string): Promise<{ channel_title: string; tags: string[] }> {
-      return request<{ channel_title: string; tags: string[] }>("/videos/channel-tags", {
-        method: "POST",
-        body: JSON.stringify({ channel_title, tags }),
-      });
-    },
-
     async get(id: number | string): Promise<Video> {
       return request<Video>(`/videos/${id}`);
     },
@@ -102,6 +95,7 @@ export const api = {
     async update(
       id: number,
       data: {
+        tags?: string[];
         processing_paused?: boolean;
         status?: VideoStatus | string;
         watch_status?: WatchStatus | string;

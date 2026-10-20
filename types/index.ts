@@ -10,7 +10,12 @@ export type WatchStatus = "TO_DO" | "DOING" | "DONE";
 export type VideoStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "NO_SUBTITLES" | "FAILED";
 export type SubtitleType = "MANUAL" | "AUTO" | "IMPORTED" | "NONE";
 
+export type VideoIngestInput = { url: string; mode: "video" | "playlist"; tags: string[] };
+export function videoTags(video: { tags?: string[]; channel_tags?: string | null }): string[] {
+  return Array.isArray(video.tags) ? video.tags : (video.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean);
+}
 export interface Video {
+  tags?: string[];
   id: number;
   user_id: number;
   video_id: string;

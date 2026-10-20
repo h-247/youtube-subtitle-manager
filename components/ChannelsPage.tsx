@@ -4,11 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ChannelItem, Video } from "../types";
+import { VideoIngestInput, videoTags, ChannelItem, Video } from "../types";
 import Navbar from "./Navbar";
 import ChannelThumbnail from "./ChannelThumbnail";
 import IngestModal from "./IngestModal";
-import ChannelsModal from "./ChannelsModal";
 import VideoLibraryControls from "./VideoLibraryControls";
 import { ChevronDown, ExternalLink, Loader2, Play, Search, Tag, Tv } from "lucide-react";
 
@@ -26,7 +25,6 @@ export default function ChannelsPage() {
   const [channelFilter, setChannelFilter] = useState("");
   const [sort, setSort] = useState("recent");
   const [isIngestOpen, setIsIngestOpen] = useState(false);
-  const [isManageOpen, setIsManageOpen] = useState(false);
 
 
   useEffect(() => {
@@ -68,7 +66,7 @@ export default function ChannelsPage() {
   useEffect(() => {
     if (!user) return;
     const refresh = () => {
-      if (document.visibilityState === "visible" && !isManageOpen && !isIngestOpen) void loadLibrary(true);
+      if (document.visibilityState === "visible" && !isIngestOpen) void loadLibrary(true);
     };
     const interval = window.setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
@@ -80,7 +78,7 @@ export default function ChannelsPage() {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("sites-drive-links-refreshed", refresh);
     };
-  }, [user, loadLibrary, isManageOpen, isIngestOpen]);
+  }, [user, loadLibrary, isIngestOpen]);
 
   const channelCards = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -119,9 +117,9 @@ export default function ChannelsPage() {
     setVideos((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
-  const startIngestion = async (url: string) => {
+  const startIngestion = async (input: VideoIngestInput) => {
     try {
-      await api.videos.ingest(url);
+      await api.videos.ingest(input);
       await loadLibrary();
     } catch (reason) {
       alert(reason instanceof Error ? reason.message : "Could not add videos.");
@@ -167,7 +165,6 @@ export default function ChannelsPage() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p role="status" className="text-sm font-semibold text-neutral-200">{loading ? "Loading channels…" : `${channelCards.length} ${channelCards.length === 1 ? "channel" : "channels"}`}</p>
           <div className="flex flex-wrap items-center gap-4">
-            <button onClick={() => setIsManageOpen(true)} className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white"><Tag className="h-3.5 w-3.5" /> Manage channels & tags</button>
             <label className="relative">
               <span className="sr-only">Sort channels</span>
               <select aria-label="Sort channels" value={sort} onChange={(event) => setSort(event.target.value)} className="appearance-none bg-[#212121] py-1 pl-1 pr-6 text-sm font-semibold text-neutral-200 outline-none focus:ring-1 focus:ring-neutral-500">
@@ -216,7 +213,6 @@ export default function ChannelsPage() {
                           <VideoLibraryControls video={video} onUpdated={onVideoUpdated} />
                         </div>)}</div>
                       </details>}
-                      {channel.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{channel.tags.map((tag) => <span key={tag} className="text-[10px] text-neutral-400">#{tag}</span>)}</div>}
                       <a href={detailHref} className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-300 hover:text-white"><span>View Channel Content</span><span aria-hidden="true">→</span></a>
                     </div>
                   </article>
@@ -227,7 +223,6 @@ export default function ChannelsPage() {
         )}
       </main>
       <IngestModal isOpen={isIngestOpen} onClose={() => setIsIngestOpen(false)} onStart={startIngestion} />
-      <ChannelsModal isOpen={isManageOpen} onClose={() => setIsManageOpen(false)} allTags={allTags} onChannelsChanged={() => void loadLibrary()} />
     </div>
   );
 }

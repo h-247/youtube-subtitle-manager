@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { ExternalLink, HardDrive, Loader2, MessageSquare, Pencil, Save } from "lucide-react";
 import { api } from "../lib/api";
-import { Video, WatchStatus } from "../types";
+import { Video, WatchStatus, videoTags } from "../types";
 
 export default function VideoLibraryControls({ video, onUpdated }: { video: Video; onUpdated: (video: Video) => void }) {
   const [editing, setEditing] = useState(false);
@@ -27,6 +27,7 @@ export default function VideoLibraryControls({ video, onUpdated }: { video: Vide
   };
   const controlClass = "inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-[10px] text-neutral-200 hover:bg-neutral-700 disabled:opacity-50";
   return <div className="mt-2 border-t border-neutral-800 pt-2">
+    {videoTags(video).length > 0 && <div aria-label="Video tags" className="mb-2 flex flex-wrap gap-1">{videoTags(video).map(tag => <span key={tag} className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-300">{tag}</span>)}</div>}
     <div className="flex flex-wrap items-center gap-1.5">
       <label className="flex items-center gap-1.5 text-[11px] text-neutral-400"><span className="sr-only">Status</span>
         <select aria-label={`Status for ${video.title}`} value={video.watch_status} disabled={saving} onChange={(event) => void update({ watch_status: event.target.value as WatchStatus })} className="rounded-lg border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-[10px] text-neutral-200 disabled:opacity-50">

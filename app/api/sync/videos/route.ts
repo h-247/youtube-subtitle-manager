@@ -6,7 +6,7 @@ const fields = [
   "video_id", "youtube_url", "title", "channel_title", "channel_url", "duration", "thumbnail_url",
   "status", "watch_status", "channel_tags", "subtitle_type", "subtitle_language", "subtitle_text",
   "drive_file_id", "drive_file_url", "chatgpt_link", "retry_count", "progress_message", "error_message",
-  "created_at", "updated_at", "last_attempt_at", "processing_source", "processing_paused", "error_category",
+  "created_at", "updated_at", "last_attempt_at", "processing_source", "processing_paused", "error_category", "tags_json",
 ] as const;
 
 export async function POST(request: Request) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   if (tombstone && (!body.created_at || Date.parse(body.created_at) <= Date.parse(tombstone.deleted_at))) {
     return json({ synced: true, deleted: true });
   }
-  const values = fields.map((field) => field === "processing_source" ? "LOCAL" : field === "processing_paused" ? Number(body.processing_paused || 0) : (body[field] ?? null));
+  const values = fields.map((field) => field === "tags_json" ? JSON.stringify(body.tags ?? (body.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean)) : field === "processing_source" ? "LOCAL" : field === "processing_paused" ? Number(body.processing_paused || 0) : (body[field] ?? null));
   const names = ["user_id", ...fields];
   const updates = fields.slice(1).map((field) =>
     field === "drive_file_id" || field === "drive_file_url"
@@ -36,20 +36,6 @@ export async function POST(request: Request) {
     .bind(userId, ...values, userId, body.video_id, body.created_at).run();
   const row = await db.prepare("SELECT id FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ id: number }>();
-  // Mirror accepted local tag edits into the channel-level table as well.
-  // Guard every statement so a newer Site edit cannot be overwritten.
-  if (body.channel_title && typeof body.updated_at === "string") {
-    const tags = [...new Set((body.channel_tags ?? "").split(",").map(tag => tag.trim().replace(/^#/, "").toLowerCase()).filter(Boolean))];
-    const accepted = "EXISTS (SELECT 1 FROM videos WHERE user_id = ? AND video_id = ? AND updated_at = ?)";
-    const statements = [db.prepare(`DELETE FROM channel_tags WHERE user_id = ? AND channel_title = ? AND ${accepted}`)
-      .bind(userId, body.channel_title, userId, body.video_id, body.updated_at)];
-    for (const tag of tags) statements.push(db.prepare(`INSERT OR IGNORE INTO channel_tags (user_id, channel_title, tag)
-      SELECT ?, ?, ? WHERE ${accepted}`).bind(userId, body.channel_title, tag, userId, body.video_id, body.updated_at));
-    // Tags belong to the channel: replace every video copy, including removals.
-    statements.push(db.prepare(`UPDATE videos SET channel_tags = ? WHERE user_id = ? AND channel_title = ? AND ${accepted}`)
-      .bind(tags.join(", ") || null, userId, body.channel_title, userId, body.video_id, body.updated_at));
-    await db.batch(statements);
-  }
   const driveUpload = body.status === "COMPLETED" ? await syncOnePendingSubtitle(userId) : null;
   const current = await db.prepare("SELECT video_id, drive_file_id, drive_file_url FROM videos WHERE user_id = ? AND video_id = ?")
     .bind(userId, body.video_id).first<{ video_id: string; drive_file_id: string | null; drive_file_url: string | null }>();

@@ -35,3 +35,13 @@ Pending Drive uploads rotate by last attempt so one outage does not starve other
 Run `node --test tests/sync-recovery.mjs` for D1-compatible SQLite coverage of
 idempotent delivery, deletion replay after re-pairing, and independent Drive retry
 with saved text and pause/resume.
+
+
+## Per-video tags
+
+Tags are independent video arrays (`tags` on the API, `tags_json` in storage).
+Channel-wide tag assignment is retired. Synchronization replaces only the addressed
+video's tags and never updates siblings or the historical channel tag table.
+Legacy per-video strings remain readable until the record is next edited.
+Single-video import takes selected tags; playlist import adds the exact playlist
+name to every entry, preserving existing tags and completed downloads on duplicates.

@@ -22,6 +22,8 @@ export type LibraryVideo = {
   chatgpt_link: string | null;
   processing_paused?: boolean | number;
   error_category?: string | null;
+  tags?: string[];
+  tags_json?: string | null;
   retry_count: number;
   progress_message: string | null;
   error_message: string | null;
@@ -69,6 +71,8 @@ export function videoFromRow(row: Record<string, unknown>): LibraryVideo {
     chatgpt_link: row.chatgpt_link == null ? null : String(row.chatgpt_link),
     processing_paused: Boolean(row.processing_paused),
     error_category: row.error_category == null ? null : String(row.error_category),
+    tags: row.tags_json != null ? JSON.parse(String(row.tags_json)) as string[] : String(row.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean),
+    tags_json: row.tags_json == null ? null : String(row.tags_json),
     retry_count: Number(row.retry_count || 0),
     progress_message: row.progress_message == null ? null : String(row.progress_message),
     error_message: row.error_message == null ? null : String(row.error_message),
@@ -200,8 +204,8 @@ export async function youtubeFetch(input: RequestInfo | URL, init: RequestInit =
   return fetch(input, { ...init, headers });
 }
 
-function readInitialPlayerResponse(html: string): Record<string, any> | null {
-  const marker = /ytInitialPlayerResponse\s*=\s*/.exec(html);
+export function readEmbeddedJson(html: string, pattern = /ytInitialPlayerResponse\s*=\s*/): Record<string, any> | null {
+  const marker = pattern.exec(html);
   if (!marker) return null;
   const jsonStart = marker.index + marker[0].length;
   let depth = 0;
@@ -222,6 +226,8 @@ function readInitialPlayerResponse(html: string): Record<string, any> | null {
   }
   return null;
 }
+
+function readInitialPlayerResponse(html: string) { return readEmbeddedJson(html); }
 
 type PlayerDiagnostics = { playability?: string; reason?: string; attemptedClients?: string[] };
 

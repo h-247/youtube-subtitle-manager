@@ -18,6 +18,7 @@ export const videos = sqliteTable("videos", {
   subtitleType: text("subtitle_type").notNull().default("NONE"),
   subtitleLanguage: text("subtitle_language"),
   subtitleText: text("subtitle_text"),
+  tagsJson: text("tags_json"),
   driveFileId: text("drive_file_id"),
   driveFileUrl: text("drive_file_url"),
   driveRetryCount: integer("drive_retry_count").notNull().default(0),
