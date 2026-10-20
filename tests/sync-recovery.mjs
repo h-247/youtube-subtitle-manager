@@ -181,3 +181,12 @@ test("playlist OAuth rejects a Drive-only grant",async()=>{
  globalThis.fetch=async()=>Response.json({access_token:"test-only",refresh_token:"test-only",scope:"https://www.googleapis.com/auth/drive.file"});
  try {await assert.rejects(service.storeYouTubeCode("owner","test-code","https://example.com/api/drive/callback"),/permission was not granted/);assert.equal(sqlite.prepare("SELECT count(*) AS n FROM youtube_connections").get().n,0);}finally{globalThis.fetch=original;}
 });
+
+test("YouTube diagnostics distinguish app configuration, OAuth, request and owner errors", async () => {
+ const {classifyYouTubeError} = await moduleAt("lib/youtube-playlists.ts");
+ for (const [status, reason, category] of [[403,"accessNotConfigured","CONFIGURATION"],[403,"SERVICE_DISABLED","CONFIGURATION"],[403,"insufficientPermissions","AUTH_REQUIRED"],[403,"quotaExceeded","QUOTA"],[400,"invalidFilters","INVALID_REQUEST"],[403,"playlistItemsNotAccessible","PERMISSION"]]) {
+  const error=classifyYouTubeError(status,{error:{errors:[{reason}]}});
+  assert.equal(error.category,category); assert.ok(error.message.includes(reason));
+ }
+ assert.equal(classifyYouTubeError(403,{error:{details:[{reason:"SERVICE_DISABLED"}]}}).category,"CONFIGURATION");
+});

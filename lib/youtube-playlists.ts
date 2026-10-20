@@ -6,7 +6,7 @@ export const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
 const API = "https://www.googleapis.com/youtube/v3/";
 const TOKEN = "https://oauth2.googleapis.com/token";
 export class YouTubeError extends Error {
-  constructor(public category: "AUTH_REQUIRED" | "PERMISSION" | "QUOTA" | "NETWORK" | "MISMATCH", message: string) { super(message); }
+  constructor(public category: "AUTH_REQUIRED" | "PERMISSION" | "QUOTA" | "NETWORK" | "MISMATCH" | "CONFIGURATION" | "INVALID_REQUEST", message: string) { super(message); }
 }
 export function youtubeConfigured() { return driveIsConfigured(); }
 export async function youtubeAccessToken(userId: string, force = false) {
@@ -46,22 +46,32 @@ export async function youtubeRequest(userId: string, path: string, parameters: R
     if (response.status === 401) response = await fetch(url, {method, headers: {Authorization: `Bearer ${await youtubeAccessToken(userId, true)}`}, signal: AbortSignal.timeout(15000)});
   } catch (error) { if (error instanceof YouTubeError) throw error; throw new YouTubeError("NETWORK", "YouTube is unreachable. Automatic retry is pending."); }
   if (response.ok || response.status === 404) return response;
-  const body = await response.json().catch(() => ({})) as {error?: {errors?: Array<{reason?: string}>}};
-  const reason = body.error?.errors?.[0]?.reason || "";
-  if (/quota|dailyLimit|rateLimit/i.test(reason)) throw new YouTubeError("QUOTA", "YouTube API quota is exhausted. Removal will retry later.");
-  if (response.status === 401) throw new YouTubeError("AUTH_REQUIRED", "Reconnect YouTube to continue playlist removal.");
-  if (response.status === 403 || response.status === 400) throw new YouTubeError("PERMISSION", "The connected YouTube account cannot edit this playlist.");
-  throw new YouTubeError("NETWORK", "YouTube removal failed. Automatic retry is pending.");
+  const body = await response.json().catch(() => ({}));
+  throw classifyYouTubeError(response.status, body, method);
+}
+export function classifyYouTubeError(status: number, body: any, method = "GET") {
+  const reasons = [...(body?.error?.errors || []).map((entry: any) => entry.reason), ...(body?.error?.details || []).map((entry: any) => entry.reason)].filter((reason: unknown) => typeof reason === "string");
+  const code = reasons.find((reason: string) => /^[a-zA-Z0-9_]{1,80}$/.test(reason)) || `HTTP_${status}`;
+  const matches = (pattern: RegExp) => reasons.some((reason: string) => pattern.test(reason));
+  if (matches(/accessNotConfigured|serviceDisabled|SERVICE_DISABLED|API_DISABLED/i)) return new YouTubeError("CONFIGURATION", "YouTube Data API v3 is disabled for the Google Cloud project used by this app. Enable it in Google Cloud Console > APIs & Services > Library, then retry. (" + code + ")");
+  if (matches(/quota|dailyLimit|rateLimit/i)) return new YouTubeError("QUOTA", "YouTube API quota is exhausted. Retry later. (" + code + ")");
+  if (matches(/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i)) return new YouTubeError("AUTH_REQUIRED", "Reconnect YouTube and grant playlist management permission. (" + code + ")");
+  if (matches(/youtubeSignupRequired|authenticatedUserNotChannel/i)) return new YouTubeError("AUTH_REQUIRED", "Reconnect YouTube and select the channel that owns the playlist, including the correct Brand Account channel. (" + code + ")");
+  if (status === 401) return new YouTubeError("AUTH_REQUIRED", "YouTube authorization expired. Reconnect YouTube. (" + code + ")");
+  if (status === 400) return new YouTubeError("INVALID_REQUEST", "YouTube rejected the playlist request. Check that this is a regular playlist URL. (" + code + ")");
+  if (status === 403) return new YouTubeError("PERMISSION", (method === "DELETE" ? "YouTube refused to remove this playlist entry. " : "YouTube refused access to this playlist or channel. ") + "Reconnect using the playlist owner's YouTube channel. (" + code + ")");
+  return new YouTubeError("NETWORK", "YouTube is temporarily unavailable. Automatic retry is pending. (" + code + ")");
 }
 export async function readManagedPlaylist(userId: string, playlistId: string) {
   if (!/^[\w-]{2,150}$/.test(playlistId)) throw new Error("Invalid playlist ID.");
   const [playlistResponse, channelResponse] = await Promise.all([
     youtubeRequest(userId, "playlists", {part: "snippet", id: playlistId}),
-    youtubeRequest(userId, "channels", {part: "id", mine: "true"}),
+    youtubeRequest(userId, "channels", {part: "id,snippet", mine: "true", maxResults: "50"}),
   ]);
   const playlist = (await playlistResponse.json() as {items?: Array<{snippet: {title: string; channelId: string}}>}).items?.[0];
-  const channels = (await channelResponse.json() as {items?: Array<{id: string}>}).items || [];
-  if (!playlist || !channels.some(c => c.id === playlist.snippet.channelId)) throw new YouTubeError("PERMISSION", "Connect the YouTube account that owns this playlist.");
+  const channels = (await channelResponse.json() as {items?: Array<{id: string; snippet?: {title?: string}}>}).items || [];
+  if (!playlist) throw new YouTubeError("INVALID_REQUEST", "The playlist was not found or is unavailable to the connected YouTube channel.");
+  if (!channels.some(c => c.id === playlist.snippet.channelId)) throw new YouTubeError("PERMISSION", `The connected YouTube channel (${channels.map(c => c.snippet?.title || c.id).join(", ") || "no channel"}) does not own this playlist. Reconnect YouTube and select the playlist owner's channel or Brand Account.`);
   const videos: Array<{video_id: string; playlist_item_id: string; title: string; channel_title: string | null; channel_url: string | null; thumbnail_url: string | null; duration: null}> = [];
   const seen = new Set<string>(); let token = "";
   do {
@@ -118,7 +128,7 @@ export async function processOnePlaylistRemoval(userId: string) {
     await db.prepare("UPDATE playlist_cleanup_jobs SET state = 'REMOVED', error = NULL, lease_until = 0, updated_at = ? WHERE id = ? AND user_id = ?").bind(new Date().toISOString(), job.id, userId).run();
   } catch (error) {
     const reason = error instanceof YouTubeError ? error : new YouTubeError("NETWORK", "Playlist removal failed. Automatic retry is pending.");
-    const permanent = reason.category === "MISMATCH" || reason.category === "PERMISSION";
+    const permanent = ["MISMATCH", "PERMISSION", "CONFIGURATION", "INVALID_REQUEST"].includes(reason.category);
     const delay = reason.category === "QUOTA" ? 6 * 3600000 : reason.category === "AUTH_REQUIRED" ? 300000 : Math.min(3600000, 5000 * 2 ** Math.min(job.attempts, 10));
     await db.prepare("UPDATE playlist_cleanup_jobs SET state = ?, next_attempt = ?, lease_until = 0, error = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(permanent ? "FAILED" : "PENDING", now + delay, `${reason.category}: ${reason.message}`, new Date().toISOString(), job.id, userId).run();
   }
@@ -127,7 +137,11 @@ export async function youtubeStatus(userId: string) {
   const db = database();
   const connection = await db.prepare("SELECT 1 AS connected FROM youtube_connections WHERE user_id = ?").bind(userId).first();
   let connected = !!connection; let connectionError: string | null = null;
-  if (connected) { try { await youtubeAccessToken(userId); } catch { connected = false; connectionError = "Reconnect YouTube to allow playlist management."; } }
+  if (connected) { try {
+    const response = await youtubeRequest(userId, "channels", {part:"id",mine:"true",maxResults:"1"});
+    const payload = await response.json() as {items?: Array<{id:string}>};
+    if (!payload.items?.length) throw new YouTubeError("AUTH_REQUIRED", "No YouTube channel is selected. Reconnect and select the playlist owner's channel.");
+  } catch (error) { connected = false; connectionError = error instanceof YouTubeError ? error.message : "Could not verify YouTube connection. Retry later."; } }
   const jobs = await db.prepare("SELECT video_id, playlist_id, state, error FROM playlist_cleanup_jobs WHERE user_id = ? ORDER BY updated_at DESC LIMIT 30").bind(userId).all();
   const totals = await db.prepare("SELECT state, count(*) AS total FROM playlist_cleanup_jobs WHERE user_id = ? GROUP BY state").bind(userId).all<{state:string;total:number}>();
   const count = (state: string) => Number(totals.results?.find(row => row.state === state)?.total || 0);
