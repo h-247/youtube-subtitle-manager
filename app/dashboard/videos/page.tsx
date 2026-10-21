@@ -631,7 +631,7 @@ function DashboardContent() {
                           href={video.youtube_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-bold text-sm text-neutral-100 hover:text-white line-clamp-1 group transition"
+                          className="font-bold text-sm text-neutral-100 hover:text-white whitespace-normal break-words group transition"
                         >
                           <span>{video.title}</span>
                           <ExternalLink className="w-3 h-3 inline ml-1 opacity-0 group-hover:opacity-100 transition" />

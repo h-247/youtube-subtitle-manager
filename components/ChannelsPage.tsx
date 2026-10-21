@@ -213,13 +213,13 @@ export default function ChannelsPage() {
                       <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-neutral-400"><span>{watchedCount}/{channel.video_count} watched · {progress}%</span><span>{subtitlesCount} subtitles</span></div>
                       {nextVideo ? <div className="mt-2">
                         <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-amber-300"><Play className="h-3 w-3" /> {nextVideo.watch_status === "DOING" ? "Continue Watching" : "Next Video"}</p>
-                        <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs leading-4 hover:underline">{nextVideo.title}</a>
+                        <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="whitespace-normal break-words text-xs leading-4 hover:underline">{nextVideo.title}</a>
                         <VideoLibraryControls key={nextVideo.id} video={nextVideo} sharedPromptLink={sharedPromptLink} onUpdated={onVideoUpdated} />
                       </div> : <p className="mt-2 text-xs text-neutral-400">All videos watched.</p>}
                       {channelVideos.some((video) => video.id !== nextVideo?.id) && <details className="mt-2 border-t border-neutral-800 pt-2">
                         <summary className="cursor-pointer text-xs text-neutral-400">More videos ({channelVideos.filter((video) => video.id !== nextVideo?.id).length})</summary>
                         <div className="mt-2 space-y-4">{channelVideos.filter((video) => video.id !== nextVideo?.id).map((video) => <div key={video.id}>
-                          <a href={video.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs font-medium hover:underline">{video.title}</a>
+                          <a href={video.youtube_url} target="_blank" rel="noreferrer" className="whitespace-normal break-words text-xs font-medium hover:underline">{video.title}</a>
                           <VideoLibraryControls video={video} sharedPromptLink={sharedPromptLink} onUpdated={onVideoUpdated} />
                         </div>)}</div>
                       </details>}
