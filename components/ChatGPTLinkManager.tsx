@@ -64,7 +64,7 @@ export default function ChatGPTLinkManager({
               ChatGPT Prompt Links
             </h2>
             <p className="mt-1 text-xs text-neutral-400">
-              Add or edit a link for each video shown on this page. Saved links appear beside Google Drive on the video row.
+              Add or edit a separate prompt link for any video in your library. Saved links appear to the right of Google Drive on the video row.
             </p>
           </div>
           <button
