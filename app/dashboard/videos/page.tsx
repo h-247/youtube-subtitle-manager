@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useAuth } from "../../../lib/auth";
 import { api } from "../../../lib/api";
 import { VideoIngestInput, videoTags, Video } from "../../../types";
@@ -469,14 +468,14 @@ function DashboardContent() {
           ) : null}
 
           {/* Shortcut to open Channels manager */}
-          <Link
+          <a
             href="/dashboard/channels"
             className="px-2.5 py-1 rounded-full text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-dashed border-neutral-700 transition flex items-center space-x-1 flex-shrink-0 ml-auto"
             title="Browse channels"
           >
             <Tv className="w-3 h-3 text-neutral-400" />
             <span>Browse Channels</span>
-          </Link>
+          </a>
         </div>
 
         {/* Toolbar: Search, Filter, Stats */}
