@@ -8,6 +8,7 @@ import { VideoIngestInput, videoTags, Video } from "../../../types";
 import Navbar from "../../../components/Navbar";
 import IngestModal from "../../../components/IngestModal";
 import EditModal from "../../../components/EditModal";
+import ChatGPTLinkManager from "../../../components/ChatGPTLinkManager";
 import {
   Search,
   ExternalLink,
@@ -26,8 +27,6 @@ import {
   Check,
   Tag,
   Tv,
-  Plus,
-  X,
   Loader2,
   Upload,
 } from "lucide-react";
@@ -63,6 +62,7 @@ function DashboardContent() {
 
   // Modals state
   const [isIngestOpen, setIsIngestOpen] = useState(false);
+  const [isChatGPTLinkManagerOpen, setIsChatGPTLinkManagerOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   // Notification banner from OAuth redirect, notices & toasts
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
@@ -184,7 +184,7 @@ function DashboardContent() {
 
   // Receive tag edits made on the paired app even when no download is active.
   useEffect(() => {
-    if (!user || editingVideo || isIngestOpen) return;
+    if (!user || editingVideo || isIngestOpen || isChatGPTLinkManagerOpen) return;
     const refresh = () => {
       if (document.visibilityState === "visible") {
         void loadVideos(true);
@@ -194,7 +194,7 @@ function DashboardContent() {
     const interval = window.setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
-  }, [user, editingVideo, isIngestOpen, loadVideos, loadTags]);
+  }, [user, editingVideo, isIngestOpen, isChatGPTLinkManagerOpen, loadVideos, loadTags]);
 
   const startIngestion = useCallback(
     (input: VideoIngestInput) => {
@@ -505,6 +505,15 @@ function DashboardContent() {
 
           {/* Watch Status & Subtitle Filter & Refresh */}
           <div className="flex items-center flex-wrap gap-3 w-full lg:w-auto justify-between lg:justify-end">
+            <button
+              onClick={() => setIsChatGPTLinkManagerOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-700 bg-[#1a1a1a] px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-800"
+              title="Add or edit ChatGPT prompt links for the videos on this page"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Manage ChatGPT Links
+            </button>
+
             {/* Watch status filter */}
             <div className="flex items-center space-x-2 text-xs text-neutral-400 font-medium">
               <span>Watch:</span>
@@ -675,6 +684,16 @@ function DashboardContent() {
                           })
                         ) : null}
 
+                        <button
+                          onClick={() => setEditingVideo(video)}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
+                          title={`Edit tags for ${video.title}`}
+                          aria-label={`Edit tags for ${video.title}`}
+                        >
+                          <Tag className="h-3 w-3" />
+                          Edit tags
+                        </button>
+
                       </div>
 
                       {/* Badges */}
@@ -755,17 +774,6 @@ function DashboardContent() {
 
                   {/* Right: External Links & Action Buttons */}
                   <div className="flex items-center flex-wrap gap-2 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-neutral-800">
-                    {video.status === "COMPLETED" && (
-                      <a
-                        href={`/api/videos/${video.id}/captions`}
-                        download
-                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
-                        title="Download subtitle file"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-neutral-400" />
-                        <span>Download SRT</span>
-                      </a>
-                    )}
                     {video.status !== "COMPLETED" && (
                       <label className={`flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition ${uploadingCaptionId === video.id ? "opacity-60 pointer-events-none" : "cursor-pointer"}`} title="Import an English VTT or SRT caption file">
                         {uploadingCaptionId === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
@@ -783,32 +791,19 @@ function DashboardContent() {
                         />
                       </label>
                     )}
-                    {/* Google Drive Link & Copy */}
+                    {/* Google Drive link */}
                     {video.drive_file_url ? (
-                      <div className="flex items-center space-x-1">
-                        <a
-                          href={video.drive_file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
-                          title="View subtitle in Google Drive"
-                        >
-                          <HardDrive className="w-3.5 h-3.5 text-neutral-400" />
-                          <span>Google Drive</span>
-                          <ExternalLink className="w-3 h-3 text-neutral-400" />
-                        </a>
-                        <button
-                          onClick={() => handleCopyDriveLink(video.drive_file_url!, video.id)}
-                          className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border border-neutral-700 rounded-xl text-xs transition"
-                          title="Copy Google Drive link"
-                        >
-                          {copiedDriveId === video.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-neutral-400" />
-                          )}
-                        </button>
-                      </div>
+                      <a
+                        href={video.drive_file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
+                        title="View subtitle in Google Drive"
+                      >
+                        <HardDrive className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Google Drive</span>
+                        <ExternalLink className="w-3 h-3 text-neutral-400" />
+                      </a>
                     ) : (
                       <span className="text-neutral-500 text-xs px-2 py-1">No Drive file</span>
                     )}
@@ -826,12 +821,19 @@ function DashboardContent() {
                         <span>ChatGPT</span>
                         <ExternalLink className="w-3 h-3 text-neutral-400" />
                       </a>
-                    ) : (
+                    ) : null}
+
+                    {video.drive_file_url && (
                       <button
-                        onClick={() => setEditingVideo(video)}
-                        className="text-xs text-neutral-400 hover:text-neutral-200 hover:underline px-2 py-1"
+                        onClick={() => handleCopyDriveLink(video.drive_file_url!, video.id)}
+                        className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border border-neutral-700 rounded-xl text-xs transition"
+                        title="Copy Google Drive link"
                       >
-                        + Add ChatGPT Link
+                        {copiedDriveId === video.id ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                        )}
                       </button>
                     )}
 
@@ -839,7 +841,7 @@ function DashboardContent() {
                     <button
                       onClick={() => setEditingVideo(video)}
                       className="p-2 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 rounded-xl transition"
-                      title="Edit status or ChatGPT link"
+                      title="Edit video status or tags"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
@@ -901,6 +903,14 @@ function DashboardContent() {
           loadTags();
         }}
       />
+
+      {isChatGPTLinkManagerOpen && (
+        <ChatGPTLinkManager
+          videos={videos}
+          onClose={() => setIsChatGPTLinkManagerOpen(false)}
+          onUpdated={(updated) => setVideos((current) => current.map((video) => video.id === updated.id ? updated : video))}
+        />
+      )}
 
 
     </div>
