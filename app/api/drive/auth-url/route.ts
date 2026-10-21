@@ -23,7 +23,6 @@ export async function GET(request: Request) {
     response_type: "code",
     scope: "https://www.googleapis.com/auth/drive.file",
     access_type: "offline",
-    include_granted_scopes: "true",
     prompt: "consent",
     state,
   }).toString();
