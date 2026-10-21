@@ -93,3 +93,5 @@ scripts/scripts/
 test-results/
 playwright-report/
 playwright/.cache/
+outputs/
+*.tsbuildinfo
