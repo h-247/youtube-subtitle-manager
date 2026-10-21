@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
-import { DriveStatus } from "../types";
-import { Video, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Link2 } from "lucide-react";
+import { DriveStatus, Video } from "../types";
+import { Video as VideoIcon, LogOut, HardDrive, PlusCircle, CheckCircle2, AlertCircle, Link2, MessageSquare } from "lucide-react";
+import ChatGPTLinkManager from "./ChatGPTLinkManager";
 
 interface NavbarProps {
   onOpenIngest: () => void;
@@ -15,6 +16,27 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
   const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [connectingDrive, setConnectingDrive] = useState(false);
   const [pairingLocal, setPairingLocal] = useState(false);
+  const [loadingPromptLinks, setLoadingPromptLinks] = useState(false);
+  const [promptLinksOpen, setPromptLinksOpen] = useState(false);
+  const [promptLinkVideos, setPromptLinkVideos] = useState<Video[]>([]);
+
+  const handleOpenPromptLinks = async () => {
+    setLoadingPromptLinks(true);
+    try {
+      const first = await api.videos.list({ page: 1, page_size: 100 });
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(0, first.total_pages - 1) }, (_, index) =>
+          api.videos.list({ page: index + 2, page_size: 100 }),
+        ),
+      );
+      setPromptLinkVideos([...first.items, ...rest.flatMap((page) => page.items)]);
+      setPromptLinksOpen(true);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not load your video prompt links.");
+    } finally {
+      setLoadingPromptLinks(false);
+    }
+  };
 
   const handlePairLocal = async () => {
     try {
@@ -66,7 +88,7 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
         {/* Brand */}
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700/80 flex items-center justify-center text-neutral-100 shadow-sm">
-            <Video className="w-6 h-6" />
+            <VideoIcon className="w-6 h-6" />
           </div>
           <div>
             <h1 className="font-bold text-lg text-neutral-100 leading-tight">
@@ -130,6 +152,16 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
 
 
 
+            <button
+              onClick={() => void handleOpenPromptLinks()}
+              disabled={loadingPromptLinks}
+              className="flex items-center bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5 transition disabled:opacity-60"
+              title="Add or edit ChatGPT prompt links for your videos"
+            >
+              <MessageSquare className="w-4 h-4 text-neutral-300" />
+              <span>{loadingPromptLinks ? "Loading links…" : "Prompt Links"}</span>
+            </button>
+
             {/* Ingest Action Button */}
             <button
               onClick={onOpenIngest}
@@ -155,6 +187,13 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
           </div>
         )}
       </div>
+      {promptLinksOpen && (
+        <ChatGPTLinkManager
+          videos={promptLinkVideos}
+          onClose={() => setPromptLinksOpen(false)}
+          onUpdated={(updated) => setPromptLinkVideos((current) => current.map((video) => video.id === updated.id ? updated : video))}
+        />
+      )}
     </header>
   );
 }

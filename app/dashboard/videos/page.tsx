@@ -8,7 +8,6 @@ import { VideoIngestInput, videoTags, Video } from "../../../types";
 import Navbar from "../../../components/Navbar";
 import IngestModal from "../../../components/IngestModal";
 import EditModal from "../../../components/EditModal";
-import ChatGPTLinkManager from "../../../components/ChatGPTLinkManager";
 import {
   Search,
   ExternalLink,
@@ -62,7 +61,6 @@ function DashboardContent() {
 
   // Modals state
   const [isIngestOpen, setIsIngestOpen] = useState(false);
-  const [isChatGPTLinkManagerOpen, setIsChatGPTLinkManagerOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   // Notification banner from OAuth redirect, notices & toasts
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
@@ -184,7 +182,7 @@ function DashboardContent() {
 
   // Receive tag edits made on the paired app even when no download is active.
   useEffect(() => {
-    if (!user || editingVideo || isIngestOpen || isChatGPTLinkManagerOpen) return;
+    if (!user || editingVideo || isIngestOpen) return;
     const refresh = () => {
       if (document.visibilityState === "visible") {
         void loadVideos(true);
@@ -194,7 +192,7 @@ function DashboardContent() {
     const interval = window.setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
-  }, [user, editingVideo, isIngestOpen, isChatGPTLinkManagerOpen, loadVideos, loadTags]);
+  }, [user, editingVideo, isIngestOpen, loadVideos, loadTags]);
 
   const startIngestion = useCallback(
     (input: VideoIngestInput) => {
@@ -505,15 +503,6 @@ function DashboardContent() {
 
           {/* Watch Status & Subtitle Filter & Refresh */}
           <div className="flex items-center flex-wrap gap-3 w-full lg:w-auto justify-between lg:justify-end">
-            <button
-              onClick={() => setIsChatGPTLinkManagerOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-700 bg-[#1a1a1a] px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-800"
-              title="Add or edit ChatGPT prompt links for the videos on this page"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              Manage ChatGPT Links
-            </button>
-
             {/* Watch status filter */}
             <div className="flex items-center space-x-2 text-xs text-neutral-400 font-medium">
               <span>Watch:</span>
@@ -918,15 +907,6 @@ function DashboardContent() {
           loadTags();
         }}
       />
-
-      {isChatGPTLinkManagerOpen && (
-        <ChatGPTLinkManager
-          videos={videos}
-          onClose={() => setIsChatGPTLinkManagerOpen(false)}
-          onUpdated={(updated) => setVideos((current) => current.map((video) => video.id === updated.id ? updated : video))}
-        />
-      )}
-
 
     </div>
   );
