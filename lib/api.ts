@@ -66,6 +66,7 @@ export const api = {
       tag?: string;
       page?: number;
       page_size?: number;
+      skip_maintenance?: boolean;
     } = {}): Promise<VideoListResponse> {
       const query = new URLSearchParams();
       if (params.search) query.set("search", params.search);
@@ -74,6 +75,7 @@ export const api = {
       if (params.tag && params.tag !== "ALL") query.set("tag", params.tag);
       if (params.page) query.set("page", params.page.toString());
       if (params.page_size) query.set("page_size", params.page_size.toString());
+      if (params.skip_maintenance) query.set("skip_maintenance", "true");
 
       return request<VideoListResponse>(`/videos?${query.toString()}`);
     },

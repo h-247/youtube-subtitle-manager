@@ -23,12 +23,11 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
   const handleOpenPromptLinks = async () => {
     setLoadingPromptLinks(true);
     try {
-      const first = await api.videos.list({ page: 1, page_size: 100 });
-      const rest = await Promise.all(
-        Array.from({ length: Math.max(0, first.total_pages - 1) }, (_, index) =>
-          api.videos.list({ page: index + 2, page_size: 100 }),
-        ),
-      );
+      const first = await api.videos.list({ page: 1, page_size: 100, skip_maintenance: true });
+      const rest = [];
+      for (let page = 2; page <= first.total_pages; page++) {
+        rest.push(await api.videos.list({ page, page_size: 100, skip_maintenance: true }));
+      }
       setPromptLinkVideos([...first.items, ...rest.flatMap((page) => page.items)]);
       setPromptLinksOpen(true);
     } catch (error) {

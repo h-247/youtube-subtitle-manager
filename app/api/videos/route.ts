@@ -19,8 +19,11 @@ export async function GET(request: Request) {
   const db = database();
   await ensureVideoPromptLinkColumn(db);
   const url = new URL(request.url);
-  await syncOnePendingSubtitle(user.userId);
-  await processOnePlaylistRemoval(user.userId);
+  const skipMaintenance = url.searchParams.get("skip_maintenance") === "true";
+  if (!skipMaintenance) {
+    await syncOnePendingSubtitle(user.userId);
+    await processOnePlaylistRemoval(user.userId);
+  }
   const search = url.searchParams.get("search")?.trim() ?? "";
   const status = url.searchParams.get("status")?.trim().toUpperCase() ?? "ALL";
   const watchStatus = url.searchParams.get("watch_status")?.trim().toUpperCase() ?? "ALL";
@@ -40,8 +43,10 @@ export async function GET(request: Request) {
   if (tag !== "ALL") { clauses.push("EXISTS (SELECT 1 FROM json_each(coalesce(tags_json, json_array())) WHERE value = ?) OR (tags_json IS NULL AND lower(coalesce(channel_tags, '')) LIKE ?)"); binds.push(tag, `%${tag}%`); clauses[clauses.length - 1] = `(${clauses.at(-1)})`; }
   const where = clauses.join(" AND ");
 
-  const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' AND processing_source <> 'LOCAL' AND processing_paused = 0 ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
-  if (due) await retryVideo(Number(due.id), user.userId);
+  if (!skipMaintenance) {
+    const due = await db.prepare(`SELECT id FROM videos WHERE user_id = ? AND status = 'PROCESSING' AND processing_source <> 'LOCAL' AND processing_paused = 0 ORDER BY coalesce(last_attempt_at, '') ASC LIMIT 1`).bind(user.userId).first<{ id: number }>();
+    if (due) await retryVideo(Number(due.id), user.userId);
+  }
 
   const totalRow = await db.prepare(`SELECT COUNT(*) AS total FROM videos WHERE ${where}`).bind(...binds).first<{ total: number }>();
   const total = Number(totalRow?.total ?? 0);
