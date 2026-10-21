@@ -16,6 +16,7 @@ export default function ChannelsPage() {
   const router = useRouter();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [sharedPromptLink, setSharedPromptLink] = useState<string | null>(null);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,15 @@ export default function ChannelsPage() {
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadPromptLink = () => { void api.preferences.getPromptLink().then(({ chatgpt_prompt_link }) => setSharedPromptLink(chatgpt_prompt_link)).catch(() => setSharedPromptLink(null)); };
+    const onPromptLinkUpdated = (event: Event) => setSharedPromptLink((event as CustomEvent<{ value: string | null }>).detail.value);
+    loadPromptLink();
+    window.addEventListener("chatgpt-prompt-link-updated", onPromptLinkUpdated);
+    return () => window.removeEventListener("chatgpt-prompt-link-updated", onPromptLinkUpdated);
+  }, [user]);
 
   const refreshing = useRef(false);
   const loadLibrary = useCallback(async (silent = false) => {
@@ -204,13 +214,13 @@ export default function ChannelsPage() {
                       {nextVideo ? <div className="mt-2">
                         <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-amber-300"><Play className="h-3 w-3" /> {nextVideo.watch_status === "DOING" ? "Continue Watching" : "Next Video"}</p>
                         <a href={nextVideo.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs leading-4 hover:underline">{nextVideo.title}</a>
-                        <VideoLibraryControls key={nextVideo.id} video={nextVideo} onUpdated={onVideoUpdated} />
+                        <VideoLibraryControls key={nextVideo.id} video={nextVideo} sharedPromptLink={sharedPromptLink} onUpdated={onVideoUpdated} />
                       </div> : <p className="mt-2 text-xs text-neutral-400">All videos watched.</p>}
                       {channelVideos.some((video) => video.id !== nextVideo?.id) && <details className="mt-2 border-t border-neutral-800 pt-2">
                         <summary className="cursor-pointer text-xs text-neutral-400">More videos ({channelVideos.filter((video) => video.id !== nextVideo?.id).length})</summary>
                         <div className="mt-2 space-y-4">{channelVideos.filter((video) => video.id !== nextVideo?.id).map((video) => <div key={video.id}>
                           <a href={video.youtube_url} target="_blank" rel="noreferrer" className="line-clamp-2 text-xs font-medium hover:underline">{video.title}</a>
-                          <VideoLibraryControls video={video} onUpdated={onVideoUpdated} />
+                          <VideoLibraryControls video={video} sharedPromptLink={sharedPromptLink} onUpdated={onVideoUpdated} />
                         </div>)}</div>
                       </details>}
                       <a href={detailHref} className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-300 hover:text-white"><span>View Channel Content</span><span aria-hidden="true">→</span></a>

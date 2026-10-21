@@ -5,7 +5,7 @@ import { ExternalLink, HardDrive, Loader2, MessageSquare, Pencil, Save } from "l
 import { api } from "../lib/api";
 import { Video, WatchStatus, videoTags } from "../types";
 
-export default function VideoLibraryControls({ video, onUpdated }: { video: Video; onUpdated: (video: Video) => void }) {
+export default function VideoLibraryControls({ video, sharedPromptLink, onUpdated }: { video: Video; sharedPromptLink: string | null; onUpdated: (video: Video) => void }) {
   const [editing, setEditing] = useState(false);
   const [link, setLink] = useState(video.chatgpt_link || "");
   const [saving, setSaving] = useState(false);
@@ -35,9 +35,10 @@ export default function VideoLibraryControls({ video, onUpdated }: { video: Vide
         </select>
       </label>
       {saving && <Loader2 aria-label="Saving changes" className="h-4 w-4 animate-spin text-neutral-400" />}
+      {video.drive_file_url ? <a href={video.drive_file_url} target="_blank" rel="noreferrer" className={controlClass}><HardDrive className="h-3.5 w-3.5" /> Drive <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-neutral-500">No Google Drive link yet</span>}
+      {sharedPromptLink && <a href={sharedPromptLink} target="_blank" rel="noreferrer" className={controlClass} title="Open the shared ChatGPT prompt link"><MessageSquare className="h-3.5 w-3.5" /> Prompt <ExternalLink className="h-3 w-3" /></a>}
       {video.chatgpt_link && <a href={video.chatgpt_link} target="_blank" rel="noreferrer" className={controlClass}><MessageSquare className="h-3.5 w-3.5" /> ChatGPT <ExternalLink className="h-3 w-3" /></a>}
       <button disabled={saving} onClick={() => { setLink(video.chatgpt_link || ""); setError(""); setEditing(!editing); }} className={controlClass}><Pencil className="h-3.5 w-3.5" /> {video.chatgpt_link ? "Edit Link" : "Add ChatGPT"}</button>
-      {video.drive_file_url ? <a href={video.drive_file_url} target="_blank" rel="noreferrer" className={controlClass}><HardDrive className="h-3.5 w-3.5" /> Drive <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-neutral-500">No Google Drive link yet</span>}
     </div>
     {editing && <form onSubmit={saveLink} className="mt-3 flex flex-wrap gap-1.5">
       <input aria-label={`ChatGPT link for ${video.title}`} type="url" value={link} disabled={saving} onChange={(event) => setLink(event.target.value)} placeholder="https://chatgpt.com/c/..." className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-[#151515] px-1.5 py-1 text-[10px] text-neutral-100 outline-none focus:border-neutral-400" />
