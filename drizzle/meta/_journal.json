@@ -50,6 +50,13 @@
       "when": 1792506113080,
       "tag": "0006_worthless_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792576296777,
+      "tag": "0007_striped_satana",
+      "breakpoints": true
     }
   ]
 }

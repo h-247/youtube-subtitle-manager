@@ -24,6 +24,7 @@ export const videos = sqliteTable("videos", {
   driveRetryCount: integer("drive_retry_count").notNull().default(0),
   driveLastAttemptAt: text("drive_last_attempt_at"),
   chatgptLink: text("chatgpt_link"),
+  chatgptPromptLink: text("chatgpt_prompt_link"),
   processingPaused: integer("processing_paused").notNull().default(0),
   errorCategory: text("error_category"),
   retryCount: integer("retry_count").notNull().default(0),

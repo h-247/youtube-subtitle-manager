@@ -20,6 +20,7 @@ export type LibraryVideo = {
   drive_file_id: string | null;
   drive_file_url: string | null;
   chatgpt_link: string | null;
+  chatgpt_prompt_link: string | null;
   processing_paused?: boolean | number;
   error_category?: string | null;
   tags?: string[];
@@ -41,6 +42,24 @@ export async function currentSiteUser() {
 export function database() {
   if (!env.DB) throw new Error("Sites D1 database binding is not available.");
   return env.DB;
+}
+
+let promptLinkSchemaReady: Promise<void> | null = null;
+export async function ensureVideoPromptLinkColumn(db = database()) {
+  if (!promptLinkSchemaReady) {
+    const migration = (async () => {
+      try {
+        await db.prepare("ALTER TABLE videos ADD COLUMN chatgpt_prompt_link TEXT").run();
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.toLowerCase().includes("duplicate column name")) throw error;
+      }
+    })();
+    promptLinkSchemaReady = migration;
+    void migration.catch(() => {
+      if (promptLinkSchemaReady === migration) promptLinkSchemaReady = null;
+    });
+  }
+  await promptLinkSchemaReady;
 }
 
 export function json(data: unknown, status = 200) {
@@ -70,6 +89,7 @@ export function videoFromRow(row: Record<string, unknown>): LibraryVideo {
     drive_file_id: row.drive_file_id == null ? null : String(row.drive_file_id),
     drive_file_url: row.drive_file_url == null ? null : String(row.drive_file_url),
     chatgpt_link: row.chatgpt_link == null ? null : String(row.chatgpt_link),
+    chatgpt_prompt_link: row.chatgpt_prompt_link == null ? null : String(row.chatgpt_prompt_link),
     processing_paused: Boolean(row.processing_paused),
     error_category: row.error_category == null ? null : String(row.error_category),
     tags: row.tags_json != null ? JSON.parse(String(row.tags_json)) as string[] : String(row.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean),

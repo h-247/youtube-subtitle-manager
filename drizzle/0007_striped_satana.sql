@@ -1,0 +1,1 @@
+ALTER TABLE `videos` ADD `chatgpt_prompt_link` text;

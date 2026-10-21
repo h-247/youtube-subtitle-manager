@@ -105,6 +105,7 @@ export const api = {
         status?: VideoStatus | string;
         watch_status?: WatchStatus | string;
         chatgpt_link?: string | null;
+        chatgpt_prompt_link?: string | null;
         channel_tags?: string | null;
       }
     ): Promise<Video> {

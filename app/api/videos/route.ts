@@ -1,8 +1,8 @@
 import { readManagedPlaylist, enqueuePlaylistRemoval, processOnePlaylistRemoval } from "../../../lib/youtube-playlists";
-import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, retryVideo, type LibraryVideo } from "../../../lib/server-api";
+import { currentSiteUser, database, ensureVideoPromptLinkColumn, errorResponse, json, videoFromRow, youtubeFetch, retryVideo, type LibraryVideo } from "../../../lib/server-api";
 import { syncOnePendingSubtitle } from "../../../lib/drive-service";
 
-const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at, tags_json, processing_paused, error_category";
+const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, chatgpt_prompt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at, tags_json, processing_paused, error_category";
 
 function videoIdsFromUrl(rawUrl: string, playlistHtml = "") {
   const url = new URL(rawUrl);
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   const user = await currentSiteUser();
   if (!user) return errorResponse("Sign in with ChatGPT to access your library.", 401);
   const db = database();
+  await ensureVideoPromptLinkColumn(db);
   const url = new URL(request.url);
   await syncOnePendingSubtitle(user.userId);
   await processOnePlaylistRemoval(user.userId);

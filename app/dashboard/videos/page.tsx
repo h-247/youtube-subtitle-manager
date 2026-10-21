@@ -791,6 +791,21 @@ function DashboardContent() {
                         />
                       </label>
                     )}
+                    {/* Existing ChatGPT link stays to the left of Google Drive. */}
+                    {video.chatgpt_link ? (
+                      <a
+                        href={video.chatgpt_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
+                        title="Open ChatGPT conversation"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>ChatGPT</span>
+                        <ExternalLink className="w-3 h-3 text-neutral-400" />
+                      </a>
+                    ) : null}
+
                     {/* Google Drive link */}
                     {video.drive_file_url ? (
                       <a
@@ -808,17 +823,17 @@ function DashboardContent() {
                       <span className="text-neutral-500 text-xs px-2 py-1">No Drive file</span>
                     )}
 
-                    {/* ChatGPT Link */}
-                    {video.chatgpt_link ? (
+                    {/* New prompt link stays to the right of Google Drive. */}
+                    {video.chatgpt_prompt_link ? (
                       <a
-                        href={video.chatgpt_link}
+                        href={video.chatgpt_prompt_link}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
-                        title="Open ChatGPT conversation"
+                        title="Open ChatGPT prompt link"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
-                        <span>ChatGPT</span>
+                        <span>Prompt</span>
                         <ExternalLink className="w-3 h-3 text-neutral-400" />
                       </a>
                     ) : null}

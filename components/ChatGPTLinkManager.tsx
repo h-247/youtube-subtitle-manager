@@ -15,7 +15,7 @@ export default function ChatGPTLinkManager({
   onUpdated: (video: Video) => void;
 }) {
   const [links, setLinks] = useState<Record<number, string>>(() =>
-    Object.fromEntries(videos.map((video) => [video.id, video.chatgpt_link || ""]))
+    Object.fromEntries(videos.map((video) => [video.id, video.chatgpt_prompt_link || ""]))
   );
   const [savingId, setSavingId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -37,10 +37,10 @@ export default function ChatGPTLinkManager({
     setSavedId(null);
     try {
       const updated = await api.videos.update(video.id, {
-        chatgpt_link: value || null,
+        chatgpt_prompt_link: value || null,
       });
       onUpdated(updated);
-      setLinks((current) => ({ ...current, [video.id]: updated.chatgpt_link || "" }));
+      setLinks((current) => ({ ...current, [video.id]: updated.chatgpt_prompt_link || "" }));
       setSavedId(video.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save ChatGPT link.");
@@ -95,8 +95,8 @@ export default function ChatGPTLinkManager({
                   aria-label={`ChatGPT prompt link for ${video.title}`}
                   className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-[#191919] px-3 py-2 text-xs text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-neutral-400"
                 />
-                {video.chatgpt_link && (
-                  <a href={video.chatgpt_link} target="_blank" rel="noopener noreferrer" title="Open saved ChatGPT link" className="shrink-0 text-neutral-400 hover:text-white">
+                {video.chatgpt_prompt_link && (
+                  <a href={video.chatgpt_prompt_link} target="_blank" rel="noopener noreferrer" title="Open saved ChatGPT prompt link" className="shrink-0 text-neutral-400 hover:text-white">
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 )}
