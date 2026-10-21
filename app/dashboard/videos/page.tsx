@@ -67,6 +67,7 @@ function DashboardContent() {
   const [ingestionNotices, setIngestionNotices] = useState<IngestionNotice[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedDriveId, setCopiedDriveId] = useState<number | null>(null);
+  const [sharedPromptLink, setSharedPromptLink] = useState<string | null>(null);
   const [uploadingCaptionId, setUploadingCaptionId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -74,6 +75,16 @@ function DashboardContent() {
       router.push("/login");
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user) api.preferences.getPromptLink().then(result => setSharedPromptLink(result.chatgpt_prompt_link)).catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    const onPromptLinkUpdated = (event: Event) => setSharedPromptLink((event as CustomEvent<{ value: string | null }>).detail.value);
+    window.addEventListener("chatgpt-prompt-link-updated", onPromptLinkUpdated);
+    return () => window.removeEventListener("chatgpt-prompt-link-updated", onPromptLinkUpdated);
+  }, []);
 
   useEffect(() => {
     if (searchParams.get("youtube_connected") === "true") {
@@ -812,20 +823,7 @@ function DashboardContent() {
                       <span className="text-neutral-500 text-xs px-2 py-1">No Drive file</span>
                     )}
 
-                    {/* New prompt link stays to the right of Google Drive. */}
-                    {video.chatgpt_prompt_link ? (
-                      <a
-                        href={video.chatgpt_prompt_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition"
-                        title="Open ChatGPT prompt link"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
-                        <span>Prompt</span>
-                        <ExternalLink className="w-3 h-3 text-neutral-400" />
-                      </a>
-                    ) : null}
+                    {sharedPromptLink ? <a href={sharedPromptLink} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-medium transition" title="Open the shared ChatGPT prompt link"><MessageSquare className="w-3.5 h-3.5 text-neutral-400" /><span>Prompt</span><ExternalLink className="w-3 h-3 text-neutral-400" /></a> : null}
 
                     {video.drive_file_url && (
                       <button

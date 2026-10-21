@@ -51,6 +51,18 @@ export const api = {
     },
   },
 
+  preferences: {
+    async getPromptLink(): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/prompt-link");
+    },
+    async setPromptLink(chatgpt_prompt_link: string | null): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/prompt-link", {
+        method: "PATCH",
+        body: JSON.stringify({ chatgpt_prompt_link }),
+      });
+    },
+  },
+
   videos: {
     async ingest(input: VideoIngestInput): Promise<VideoIngestResponse> {
       return request<VideoIngestResponse>("/videos/ingest", {

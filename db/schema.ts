@@ -57,6 +57,12 @@ export const driveConnections = sqliteTable("drive_connections", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const userPromptSettings = sqliteTable("user_prompt_settings", {
+  userId: text("user_id").primaryKey(),
+  chatgptPromptLink: text("chatgpt_prompt_link"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const driveOauthStates = sqliteTable("drive_oauth_states", {
   state: text("state").primaryKey(),
   userId: text("user_id").notNull(),
