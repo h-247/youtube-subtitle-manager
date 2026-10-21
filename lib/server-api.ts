@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../app/app/chatgpt-auth";
+import { getChatGPTUser } from "../app/chatgpt-auth";
 
 export type LibraryVideo = {
   id: number;
