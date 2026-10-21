@@ -5,6 +5,13 @@ const identity = (user: string) => ({"oai-authenticated-user-id": user, "oai-aut
 test("import saves captions, completes Drive, survives reload and interrupted confirmation, then deletes", async ({ page, request }) => {
   await page.setExtraHTTPHeaders(identity("workflow-user"));
   await page.goto("/dashboard/videos");
+  await page.getByRole("button", {name: "Add ChatGPT prompt link", exact: true}).click();
+  const promptDialog = page.getByRole("dialog", {name: "Shared ChatGPT prompt link"});
+  await promptDialog.getByLabel("ChatGPT link", {exact: true}).fill("https://chatgpt.com/c/browser-prompt");
+  await promptDialog.getByRole("button", {name: "Save link", exact: true}).click();
+  await expect(promptDialog).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("link", {name: "Prompt", exact: true})).toHaveAttribute("href", "https://chatgpt.com/c/browser-prompt");
   await page.getByRole("button", {name: "Ingest Videos"}).click();
   await page.getByRole("textbox", {name: "Video URL"}).fill("https://www.youtube.com/watch?v=release0001");
   await page.getByRole("button", {name: "Add video", exact: true}).click();
@@ -21,13 +28,13 @@ test("import saves captions, completes Drive, survives reload and interrupted co
   const saved = await request.get(`/api/videos/${video.id}/captions`, {headers: identity("workflow-user")});
   expect(await saved.text()).toContain("Saved release captions");
   await page.reload();
-  await page.getByTitle("Edit status or ChatGPT link").click();
+  await page.getByTitle("Edit video status or tags").click();
   await page.getByLabel("Watch status", {exact: true}).selectOption("DONE");
   await page.getByRole("textbox", {name: "New video tag"}).fill("release-proof");
   await page.getByRole("button", {name: "Save Changes"}).click();
   await expect(page.getByRole("dialog", {name: "Edit video"})).toBeHidden();
   await page.reload();
-  await page.getByTitle("Edit status or ChatGPT link").click();
+  await page.getByTitle("Edit video status or tags").click();
   await expect(page.getByLabel("Watch status", {exact: true})).toHaveValue("DONE");
   await expect(page.getByRole("button", {name: "release-proof", exact: true}).last()).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", {name: "Cancel", exact: true}).click();
@@ -55,6 +62,10 @@ test("paired API preferences, edits, deletions and reconnect are isolated", asyn
   const preference = {chatgpt_prompt_link: "https://chatgpt.com/c/shared"};
   expect((await request.put("/api/sync/prompt-link", {headers, data: preference})).ok()).toBe(true);
   expect(await (await request.get("/api/sync/prompt-link", {headers})).json()).toEqual(preference);
+  expect(await (await request.get("/api/prompt-link", {headers: identity("contract-a")})).json()).toEqual(preference);
+  expect((await request.patch("/api/prompt-link", {headers: identity("contract-a"), data: {chatgpt_prompt_link: "https://chatgpt.com/c/from-site"}})).ok()).toBe(true);
+  expect(await (await request.get("/api/sync/prompt-link", {headers})).json()).toEqual({chatgpt_prompt_link: "https://chatgpt.com/c/from-site"});
+  await request.put("/api/sync/prompt-link", {headers, data: preference});
   expect(await (await request.get("/api/sync/prompt-link", {headers: {Authorization: `Bearer ${other}`}})).json()).toEqual({chatgpt_prompt_link: null});
   const data = {video_id: "contract001", title: "Local record", youtube_url: "https://youtube.com/watch?v=contract001", status: "COMPLETED", subtitle_type: "MANUAL", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", tags: ["local"]};
   const pushed = await request.post("/api/sync/videos", {headers, data});

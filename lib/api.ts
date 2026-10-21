@@ -51,6 +51,18 @@ export const api = {
     },
   },
 
+  preferences: {
+    async getPromptLink(): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/prompt-link");
+    },
+    async setPromptLink(chatgpt_prompt_link: string | null): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/prompt-link", {
+        method: "PATCH",
+        body: JSON.stringify({ chatgpt_prompt_link }),
+      });
+    },
+  },
+
   videos: {
     async ingest(input: VideoIngestInput): Promise<VideoIngestResponse> {
       return request<VideoIngestResponse>("/videos/ingest", {
@@ -66,6 +78,7 @@ export const api = {
       tag?: string;
       page?: number;
       page_size?: number;
+      skip_maintenance?: boolean;
     } = {}): Promise<VideoListResponse> {
       const query = new URLSearchParams();
       if (params.search) query.set("search", params.search);
@@ -74,6 +87,7 @@ export const api = {
       if (params.tag && params.tag !== "ALL") query.set("tag", params.tag);
       if (params.page) query.set("page", params.page.toString());
       if (params.page_size) query.set("page_size", params.page_size.toString());
+      if (params.skip_maintenance) query.set("skip_maintenance", "true");
 
       return request<VideoListResponse>(`/videos?${query.toString()}`);
     },
@@ -105,6 +119,7 @@ export const api = {
         status?: VideoStatus | string;
         watch_status?: WatchStatus | string;
         chatgpt_link?: string | null;
+        chatgpt_prompt_link?: string | null;
         channel_tags?: string | null;
       }
     ): Promise<Video> {

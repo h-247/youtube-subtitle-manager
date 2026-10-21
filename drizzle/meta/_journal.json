@@ -71,6 +71,13 @@
       "when": 1792603997212,
       "tag": "0009_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792604630943,
+      "tag": "0010_preserve_hosted_preferences",
+      "breakpoints": true
     }
   ]
 }
