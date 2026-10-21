@@ -76,6 +76,10 @@ export async function storeAuthorizationCode(userId: string, code: string, redir
   await db.prepare(`INSERT INTO drive_connections (user_id, encrypted_credentials, created_at, updated_at)
     VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET encrypted_credentials = excluded.encrypted_credentials, updated_at = excluded.updated_at`)
     .bind(userId, encrypted, now, now).run();
+  await db.prepare(`UPDATE videos SET error_category = NULL, error_message = NULL,
+    progress_message = 'Subtitles saved; Google Drive upload will retry', drive_last_attempt_at = NULL, updated_at = ?
+    WHERE user_id = ? AND error_category = 'DRIVE_UPLOAD' AND drive_file_id IS NULL`)
+    .bind(now, userId).run();
 }
 
 async function accessToken(userId: string, forceRefresh = false): Promise<string> {

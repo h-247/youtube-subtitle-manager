@@ -71,6 +71,7 @@ export interface VideoListResponse {
 export interface DriveStatus {
   is_configured: boolean;
   is_connected: boolean;
+  needs_reconnect?: boolean;
 }
 
 export interface ChannelItem {

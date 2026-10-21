@@ -86,7 +86,20 @@ export default function Navbar({ onOpenIngest }: NavbarProps) {
             </button>
             {/* Drive Connection Status */}
             {driveStatus?.is_configured ? (
-              driveStatus.is_connected ? (
+              driveStatus.is_connected && driveStatus.needs_reconnect ? (
+                <div className="flex items-center bg-neutral-800 text-amber-300 border border-amber-900/70 px-3 py-1.5 rounded-lg text-xs font-medium space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400" />
+                  <span>Reconnect Drive</span>
+                  <button
+                    onClick={handleConnectDrive}
+                    disabled={connectingDrive}
+                    className="text-amber-200 hover:text-white hover:underline pl-2 border-l border-neutral-700"
+                    title="Renew Google Drive access so saved subtitles can upload"
+                  >
+                    {connectingDrive ? "Connecting..." : "Reconnect"}
+                  </button>
+                </div>
+              ) : driveStatus.is_connected ? (
                 <div className="flex items-center bg-neutral-800 text-neutral-200 border border-neutral-700 px-3 py-1.5 rounded-lg text-xs font-medium space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-neutral-300" />
                   <span>Drive Connected</span>
