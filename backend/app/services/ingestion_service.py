@@ -53,7 +53,7 @@ def dispatch_pending() -> None:
         if capacity <= 0:
             return
         with get_db_session() as db:
-            pending = db.query(Video).filter(Video.status == "PROCESSING").order_by(Video.updated_at, Video.id).all()
+            pending = db.query(Video).filter(Video.status == "PROCESSING", Video.processing_paused == 0).order_by(Video.updated_at, Video.id).all()
             for video in pending:
                 if video.id in _active_video_ids:
                     continue
@@ -72,158 +72,78 @@ def dispatch_pending() -> None:
 
 
 def _process_video_worker(video_db_id: int, user_id: int, initial_delay: float) -> None:
+    import os
+    import tempfile
+    stage = "DOWNLOAD"
     try:
-        if initial_delay > 0:
-            time.sleep(initial_delay)
-
-        retry_count = 0
-
-        while True:
-            # Check if video still exists and is in PROCESSING state
-            with get_db_session() as db:
-                video = (
-                    db.query(Video)
-                    .filter(Video.id == video_db_id, Video.user_id == user_id)
-                    .first()
-                )
-                if not video:
-                    # Video deleted from library
-                    break
-                if video.status != "PROCESSING":
-                    # Status manually changed or cancelled
-                    break
-
-                retry_count = video.retry_count or 0
-                video_id = video.video_id
-                youtube_url = video.youtube_url
-                video_title = video.title
-
-                # Read user drive credentials if available
-                user = db.query(User).filter(User.id == user_id).first()
-                user_credentials = None
-                if user and user.drive_credentials:
-                    try:
-                        user_credentials = json.loads(user.drive_credentials)
-                    except Exception:
-                        user_credentials = None
-
-                # Update progress message
-                if retry_count == 0:
-                    video.progress_message = "Downloading subtitles..."
-                else:
-                    video.progress_message = f"Retrying subtitle download (attempt {retry_count + 1})..."
+        with get_db_session() as db:
+            video = db.query(Video).filter_by(id=video_db_id, user_id=user_id).first()
+            if not video or video.status != "PROCESSING" or video.processing_paused:
+                return
+            # Persisted subtitle text is the upload source, including after restart.
+            if not video.download_complete:
+                video.progress_message = "Downloading subtitles..."
                 db.commit()
-                sync_video(db, video)
-
-            # Execute subtitle download
-            try:
-                sub_result = download_subtitles(video_id, youtube_url)
-            except Exception as exc:
-                sub_result = {
-                    "status": "FAILED",
-                    "subtitle_type": "NONE",
-                    "subtitle_language": None,
-                    "file_path": None,
-                    "error_message": str(exc),
-                }
-
-            status_result = sub_result.get("status")
-
-            if status_result == "COMPLETED":
-                file_path = sub_result.get("file_path")
-                subtitle_text = None
-                if file_path:
+                result = download_subtitles(video.video_id, video.youtube_url)
+                if result.get("status") != "COMPLETED":
+                    stage = "NO_SUBTITLES" if result.get("status") == "NO_SUBTITLES" else "DOWNLOAD"
+                    raise RuntimeError(result.get("error_message") or "No English subtitles found yet")
+                path = result.get("file_path")
+                text = None
+                if path:
+                    with open(path, encoding="utf-8-sig") as source:
+                        text = source.read()
+                db.refresh(video)
+                video.subtitle_text = text
+                video.subtitle_type = result.get("subtitle_type", "NONE")
+                video.subtitle_language = result.get("subtitle_language")
+                video.download_complete = 1
+                video.error_message = None
+                video.error_category = None
+                db.commit()  # Durable boundary BEFORE attempting Drive.
+                if path:
                     try:
-                        with open(file_path, "r", encoding="utf-8-sig") as subtitle_file:
-                            subtitle_text = subtitle_file.read()
+                        os.remove(path)
                     except OSError:
-                        logger.warning("Could not read subtitle text for Sites sync: %s", video_id)
-                drive_id = None
-                drive_url = None
-                drive_error = None
-
-                if file_path and user_credentials:
-                    try:
-                        with get_db_session() as db:
-                            v_curr = db.query(Video).filter(Video.id == video_db_id).first()
-                            if v_curr:
-                                v_curr.progress_message = "Uploading subtitles to Google Drive..."
-                                db.commit()
-
-                        drive_upload = drive_service.upload_subtitle(
-                            file_path=file_path,
-                            title=video_title,
-                            credentials_data=user_credentials,
-                            delete_on_success=True,
-                        )
-                        drive_id = drive_upload.get("drive_file_id")
-                        drive_url = drive_upload.get("drive_file_url")
-                    except Exception as drive_err:
-                        drive_error = f"Drive upload failed: {str(drive_err)}"
-
-                if file_path and not user_credentials:
-                    import os
-                    if os.path.exists(file_path):
-                        try:
-                            os.remove(file_path)
-                        except OSError:
-                            pass
-
-                # If drive upload failed, retry the whole process indefinitely as required by AC3
-                if drive_error:
-                    retry_count += 1
-                    with get_db_session() as db:
-                        video = db.query(Video).filter(Video.id == video_db_id).first()
-                        if not video or video.status != "PROCESSING":
-                            break
-                        video.retry_count = retry_count
-                        video.error_message = drive_error
-                        video.progress_message = f"{drive_error}. Retrying indefinitely (attempt {retry_count})..."
-                        db.commit()
-                        sync_video(db, video)
-
-                    delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** min(retry_count - 1, 20)), MAX_RETRY_DELAY_SECONDS)
-                    return
-
-                # Everything succeeded!
-                with get_db_session() as db:
-                    video = db.query(Video).filter(Video.id == video_db_id).first()
-                    if video and video.status == "PROCESSING":
-                        video.status = "COMPLETED"
-                        video.subtitle_type = sub_result.get("subtitle_type", "NONE")
-                        video.subtitle_language = sub_result.get("subtitle_language")
-                        video.subtitle_text = subtitle_text
-                        video.drive_file_id = drive_id
-                        video.drive_file_url = drive_url
-                        video.error_message = None
-                        video.progress_message = "Subtitles downloaded and archived successfully."
-                        db.commit()
-                        sync_video(db, video)
-                break
-
-            # Handle retryable conditions: NO_SUBTITLES or FAILED
-            # As per requirements: "A lack of English subtitles is also a retryable processing result and must stay in the retry loop"
-            # "Retry every subtitle/Drive processing failure indefinitely; do not mark the job as final FAILED or NO_SUBTITLES while automatic retries continue."
-            retry_count += 1
-            err_msg = sub_result.get("error_message") or (
-                "No English subtitles found yet" if status_result == "NO_SUBTITLES" else "Subtitle download failed"
-            )
-
-            with get_db_session() as db:
-                video = db.query(Video).filter(Video.id == video_db_id).first()
-                if not video or video.status != "PROCESSING":
-                    break
-                video.retry_count = retry_count
-                video.error_message = err_msg
-                video.progress_message = f"{err_msg}. Retrying (attempt {retry_count})..."
+                        pass
+            db.refresh(video)
+            if video.processing_paused or video.status != "PROCESSING":
+                return
+            user = db.get(User, user_id)
+            stage = "DRIVE_UPLOAD"
+            if user.drive_credentials and video.subtitle_text is not None and not video.drive_file_id:
+                video.progress_message = "Uploading saved subtitles to Google Drive..."
                 db.commit()
-                sync_video(db, video)
-
-            delay = min(INITIAL_RETRY_DELAY_SECONDS * (1.5 ** min(retry_count - 1, 20)), MAX_RETRY_DELAY_SECONDS)
-            return
-
-    except Exception as exc:
-        logger.exception("Unexpected error in video processing worker for video_id %s: %s", video_db_id, exc)
+                temp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", delete=False) as saved:
+                        saved.write(video.subtitle_text)
+                        temp_path = saved.name
+                    upload = drive_service.upload_subtitle(file_path=temp_path, title=video.title,
+                        credentials_data=json.loads(user.drive_credentials), delete_on_success=False)
+                    if not upload.get("drive_file_id"):
+                        raise RuntimeError("Drive did not acknowledge upload")
+                    db.refresh(video)
+                    video.drive_file_id = upload["drive_file_id"]
+                    video.drive_file_url = upload.get("drive_file_url")
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        os.remove(temp_path)
+            video.status = "COMPLETED"
+            video.error_message = None
+            video.error_category = None
+            video.progress_message = "Subtitles downloaded and archived successfully."
+            db.commit()
+    except Exception:
+        logger.warning("Processing attempt failed for video %s at %s", video_db_id, stage)
+        with get_db_session() as db:
+            video = db.query(Video).filter_by(id=video_db_id, user_id=user_id).first()
+            if video and video.status == "PROCESSING":
+                video.retry_count += 1
+                video.error_category = stage
+                video.error_message = {"DOWNLOAD": "Subtitle download failed", "NO_SUBTITLES": "No English subtitles found yet", "DRIVE_UPLOAD": "Drive upload failed; downloaded subtitles are saved"}[stage]
+                video.progress_message = f"{video.error_message}. Automatic retry pending (attempt {video.retry_count})."
+                db.commit()
     finally:
         with _lock:
             _active_video_ids.discard(video_db_id)

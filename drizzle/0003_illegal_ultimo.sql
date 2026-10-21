@@ -1,0 +1,1 @@
+ALTER TABLE `local_sync_tokens` ADD `user_email` text;

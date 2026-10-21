@@ -1,3 +1,4 @@
+import json
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -30,12 +31,36 @@ class Video(Base):
     subtitle_language = Column(String(32), default="en", nullable=True)
     subtitle_text = Column(Text, nullable=True)
 
+    tags_json = Column(Text, nullable=True)
+    playlist_items_json = Column(Text, nullable=True)
+
+    @property
+    def playlist_items(self):
+        return json.loads(self.playlist_items_json) if self.playlist_items_json else []
+
+    @property
+    def tags(self):
+        if self.tags_json is not None:
+            return json.loads(self.tags_json)
+        return [t.strip().lstrip("#") for t in (self.channel_tags or "").split(",") if t.strip()]
+
+    @tags.setter
+    def tags(self, values):
+        tags = list(dict.fromkeys(t.strip() for t in values if t.strip()))
+        self.tags_json = json.dumps(tags, ensure_ascii=False)
+        self.channel_tags = ", ".join(tags)[:256] or None
+
     # Google Drive metadata
     drive_file_id = Column(String(256), nullable=True)
     drive_file_url = Column(String(1024), nullable=True)
 
     # User editable notes / ChatGPT link
     chatgpt_link = Column(String(1024), nullable=True)
+
+    sites_synced = Column(Integer, default=0, nullable=False)
+    download_complete = Column(Integer, default=0, nullable=False)
+    processing_paused = Column(Integer, default=0, nullable=False)
+    error_category = Column(String(32), nullable=True)
 
     # Retry and progress tracking
     retry_count = Column(Integer, default=0, nullable=False)

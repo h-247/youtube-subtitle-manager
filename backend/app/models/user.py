@@ -10,6 +10,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     drive_credentials = Column(Text, nullable=True)  # JSON-encoded Google Drive OAuth tokens
+    chatgpt_prompt_link = Column(Text, nullable=True)  # User-wide prompt link shared with the paired Site
     sites_sync_token = Column(Text, nullable=True)  # Fernet-encrypted Sites pairing token
     sites_user_id = Column(String(255), unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)

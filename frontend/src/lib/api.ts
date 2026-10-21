@@ -1,6 +1,6 @@
-import { User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
+import { YouTubeStatus, VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_BASE = "/api";
 
 function getAuthHeader(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -47,6 +47,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  youtube: {
+    getStatus: () => request<YouTubeStatus>("/youtube/status"),
+    retry: () => request("/youtube/retry", {method: "POST"}),
+    disconnect: () => request("/youtube/disconnect", {method: "POST"}),
+  },
   auth: {
     async login(email: string, password: string): Promise<{ access_token: string; user: User }> {
       return request<{ access_token: string; user: User }>("/auth/login", {
@@ -78,10 +83,10 @@ export const api = {
   },
 
   videos: {
-    async ingest(url: string): Promise<VideoIngestResponse> {
+    async ingest(input: VideoIngestInput): Promise<VideoIngestResponse> {
       return request<VideoIngestResponse>("/videos/ingest", {
         method: "POST",
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(input),
       });
     },
 
@@ -112,13 +117,6 @@ export const api = {
       return request<ChannelItem[]>("/videos/channels");
     },
 
-    async setChannelTags(channel_title: string, tags: string): Promise<{ channel_title: string; tags: string[] }> {
-      return request<{ channel_title: string; tags: string[] }>("/videos/channel-tags", {
-        method: "POST",
-        body: JSON.stringify({ channel_title, tags }),
-      });
-    },
-
     async get(id: number | string): Promise<Video> {
       return request<Video>(`/videos/${id}`);
     },
@@ -126,6 +124,8 @@ export const api = {
     async update(
       id: number,
       data: {
+        tags?: string[];
+        processing_paused?: boolean;
         status?: VideoStatus | string;
         watch_status?: WatchStatus | string;
         chatgpt_link?: string | null;
@@ -179,6 +179,18 @@ export const api = {
 
     async disconnect(): Promise<{ is_connected: boolean }> {
       return request<{ is_connected: boolean }>("/sites-sync/connect", { method: "DELETE" });
+    },
+  },
+
+  preferences: {
+    async getPromptLink(): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/preferences/prompt-link");
+    },
+    async setPromptLink(chatgpt_prompt_link: string | null): Promise<{ chatgpt_prompt_link: string | null }> {
+      return request<{ chatgpt_prompt_link: string | null }>("/preferences/prompt-link", {
+        method: "PATCH",
+        body: JSON.stringify({ chatgpt_prompt_link }),
+      });
     },
   },
 };

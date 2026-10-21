@@ -28,8 +28,11 @@ def values(video, operation="upsert"):
 
 
 def enqueue_sync(db, video):
+    db.flush()
+    if db.query(SyncOperation).filter_by(user_id=video.user_id, video_id=video.video_id).first():
+        return
     user = db.get(User, video.user_id)
-    if user and user.sites_sync_token:
+    if user and (user.sites_sync_token or user.sites_user_id):
         db.add(SyncOperation(**values(video)))
 
 
@@ -39,17 +42,21 @@ def record_change(mapper, connection, video):
     session = object_session(video)
     if session and session.info.get("sites_pull"):
         return
-    if not any(attr.history.has_changes() for attr in inspect(video).attrs):
+    if not any(attr.history.has_changes() for attr in inspect(video).attrs if attr.key != "sites_synced"):
         return
-    token = connection.execute(select(User.sites_sync_token).where(User.id == video.user_id)).scalar()
+    token = connection.execute(select(User.id).where(User.id == video.user_id, (User.sites_sync_token.isnot(None) | User.sites_user_id.isnot(None)))).scalar()
     if token:
+        connection.execute(SyncOperation.__table__.delete().where(SyncOperation.user_id == video.user_id, SyncOperation.video_id == video.video_id))
         connection.execute(SyncOperation.__table__.insert().values(**values(video)))
 
 
 @event.listens_for(Video, "after_delete")
 def record_delete(mapper, connection, video):
-    token = connection.execute(select(User.sites_sync_token).where(User.id == video.user_id)).scalar()
+    if object_session(video).info.get("sites_pull"):
+        return
+    token = connection.execute(select(User.id).where(User.id == video.user_id, (User.sites_sync_token.isnot(None) | User.sites_user_id.isnot(None)))).scalar()
     if token:
+        connection.execute(SyncOperation.__table__.delete().where(SyncOperation.user_id == video.user_id, SyncOperation.video_id == video.video_id))
         connection.execute(SyncOperation.__table__.insert().values(**values(video, "delete")))
 
 
@@ -58,16 +65,27 @@ def deliver_pending():
         return
     try:
         with SessionLocal() as db:
+            # Check cloud deletions before sending offline edits to acknowledged rows.
+            from app.services.sites_sync_service import _reconcile_library
+            guarded_users = {v.user_id for v in db.query(Video).filter(Video.sites_synced == 1).all()}
+            unavailable = set()
+            for user_id in guarded_users:
+                try:
+                    _reconcile_library(db, db.get(User, user_id))
+                except Exception:
+                    db.rollback()
+                    unavailable.add(user_id)
             operations = db.query(SyncOperation).order_by(SyncOperation.id).all()
             blocked = set()
             for op in operations:
                 key = (op.user_id, op.video_id)
-                if key in blocked:
+                if key in blocked or (op.user_id in unavailable and op.operation != "delete"):
                     continue
                 blocked.add(key)
                 user = db.get(User, op.user_id)
                 if not user or not user.sites_sync_token or op.next_attempt > time.time():
                     continue
+                sent_id, sent_payload, sent_operation = op.id, op.payload, op.operation
                 try:
                     headers = _site_headers(decrypt_token(user.sites_sync_token))
                     url = settings.SITES_SYNC_URL.rstrip('/') + '/api/sync/videos'
@@ -80,6 +98,8 @@ def deliver_pending():
                     if result.get("synced") is not True:
                         raise ValueError("Sites did not acknowledge the operation")
                     if op.operation != "delete":
+                        connection = db.connection()
+                        connection.execute(Video.__table__.update().where(Video.user_id == op.user_id, Video.video_id == op.video_id).values(sites_synced=1, updated_at=Video.updated_at))
                         uploads = result.get("drive_uploads", [result.get("drive_upload")])
                         for upload in uploads or []:
                             if not isinstance(upload, dict):
@@ -88,12 +108,15 @@ def deliver_pending():
                             if video and upload.get("drive_file_id") and upload.get("drive_file_url"):
                                 video.drive_file_id = upload["drive_file_id"]
                                 video.drive_file_url = upload["drive_file_url"]
-                    db.delete(op)
+                    db.query(SyncOperation).filter(
+                        SyncOperation.id == sent_id, SyncOperation.payload == sent_payload,
+                        SyncOperation.operation == sent_operation,
+                    ).delete(synchronize_session=False)
                     db.commit()
                 except Exception as exc:
                     db.rollback()
-                    op = db.get(SyncOperation, op.id)
-                    if op:
+                    op = db.get(SyncOperation, sent_id)
+                    if op and op.payload == sent_payload and op.operation == sent_operation:
                         op.attempts += 1
                         op.next_attempt = time.time() + min(60, 2 ** min(op.attempts, 6))
                         # Never persist tokens, URLs, or response bodies from exceptions.
@@ -115,7 +138,8 @@ class JobRunner:
     def start(self):
         from app.services.ingestion_service import dispatch_pending
         from app.services.sites_sync_service import reconcile_libraries
-        for action, interval in ((dispatch_pending, 1), (deliver_pending, 1), (reconcile_libraries, 15)):
+        from app.services.youtube_playlist_service import process_playlist_removals
+        for action, interval in ((dispatch_pending, 1), (deliver_pending, 1), (reconcile_libraries, 15), (process_playlist_removals, 10)):
             def run(action=action, interval=interval):
                 while not self.stop_event.is_set():
                     try:

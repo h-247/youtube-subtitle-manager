@@ -4,6 +4,7 @@ from app.database import Base
 
 class SyncOperation(Base):
     __tablename__ = "sync_operations"
+    __table_args__ = {"sqlite_autoincrement": True}
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     video_id = Column(String(64), nullable=False)

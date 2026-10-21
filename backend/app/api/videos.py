@@ -1,5 +1,7 @@
 import json
 import math
+from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -22,6 +24,7 @@ from app.schemas.video import (
 )
 from app.api.deps import get_current_user
 from app.services.youtube_service import extract_items_from_url
+from app.services.youtube_playlist_service import fetch_managed_playlist
 from app.services.subtitle_service import download_subtitles
 from app.services.drive_service import drive_service
 
@@ -47,12 +50,34 @@ def ingest_videos(
     if not raw_url:
         raise HTTPException(status_code=400, detail="A valid YouTube URL must be provided.")
 
-    extracted_items = extract_items_from_url(raw_url)
+    parsed_url = urlparse(raw_url)
+    if parsed_url.scheme not in {"http", "https"} or parsed_url.hostname not in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
+        raise HTTPException(400, "Enter a valid YouTube URL.")
+    query = parse_qs(parsed_url.query)
+    mode = payload.mode or ("playlist" if query.get("list") else "video")
+    if mode == "playlist":
+        if not query.get("list"):
+            raise HTTPException(400, "Playlist mode requires a YouTube playlist URL.")
+        raw_url = "https://www.youtube.com/playlist?" + urlencode({"list": query["list"][0]})
+    else:
+        if parsed_url.path == "/playlist":
+            raise HTTPException(400, "Use Playlist mode to add a playlist.")
+        query.pop("list", None); query.pop("index", None)
+        raw_url = urlunparse(parsed_url._replace(query=urlencode(query, doseq=True)))
+    extracted_items = fetch_managed_playlist(current_user, query["list"][0]) if mode == "playlist" else extract_items_from_url(raw_url)
     if not extracted_items:
         raise HTTPException(
             status_code=400,
             detail="Unable to find or parse valid YouTube video(s) from the provided URL.",
         )
+
+    playlist_title = extracted_items[0].get("playlist_title") if mode == "playlist" else None
+    if mode == "playlist" and not playlist_title:
+        raise HTTPException(422, "Could not read the playlist name. Check that the playlist is public and retry.")
+    incoming_tags = [playlist_title] if mode == "playlist" else payload.tags
+    incoming_tags = list(dict.fromkeys(t.strip() for t in incoming_tags if t.strip()))
+    if mode == "video" and len(extracted_items) != 1:
+        raise HTTPException(400, "Single video mode accepts exactly one video.")
 
     results = []
     skipped_duplicates = 0
@@ -70,6 +95,14 @@ def ingest_videos(
             .first()
         )
         if existing:
+            if mode == "playlist" and item.get("playlist_item_id"):
+                memberships = {v["playlist_item_id"]: v for v in existing.playlist_items}
+                memberships[item["playlist_item_id"]] = {"playlist_id": query["list"][0], "playlist_item_id": item["playlist_item_id"]}
+                existing.playlist_items_json = json.dumps(list(memberships.values()))
+            # Preserve old video tags when an existing video joins another playlist.
+            if incoming_tags:
+                existing.tags = [*existing.tags, *incoming_tags]
+                db.commit()
             # If already processing, avoid creating a second concurrent job
             if existing.status == "PROCESSING" or is_job_active(existing.id):
                 skipped_duplicates += 1
@@ -115,20 +148,10 @@ def ingest_videos(
             video.retry_count = 0
             video.error_message = None
             video.progress_message = "Queued for processing..."
+            video.tags = [*video.tags, *incoming_tags]
             db.commit()
             db.refresh(video)
         else:
-            # Check if this channel has existing tags for this user
-            ch_title = item.get("channel_title")
-            existing_tags_str = None
-            if ch_title:
-                tag_rows = db.query(ChannelTag.tag).filter(
-                    ChannelTag.user_id == current_user.id,
-                    ChannelTag.channel_title == ch_title
-                ).all()
-                if tag_rows:
-                    existing_tags_str = ", ".join([r[0] for r in tag_rows])
-
             # Create new record in PROCESSING state
             video = Video(
                 user_id=current_user.id,
@@ -137,7 +160,7 @@ def ingest_videos(
                 title=item["title"],
                 channel_title=item.get("channel_title"),
                 channel_url=item.get("channel_url"),
-                channel_tags=existing_tags_str,
+
                 duration=item.get("duration"),
                 thumbnail_url=item.get("thumbnail_url"),
                 status="PROCESSING",
@@ -146,6 +169,9 @@ def ingest_videos(
                 retry_count=0,
                 progress_message="Queued for processing...",
             )
+            video.tags = incoming_tags
+            if mode == "playlist" and item.get("playlist_item_id"):
+                video.playlist_items_json = json.dumps([{"playlist_id": query["list"][0], "playlist_item_id": item["playlist_item_id"]}])
             db.add(video)
             db.commit()
             db.refresh(video)
@@ -233,19 +259,11 @@ def list_videos(
                 )
             )
 
-    if tag_filter and tag_filter.strip().upper() != "ALL":
-        raw_tag = tag_filter.strip().lstrip("#").lower()
-        query = query.filter(
-            or_(
-                Video.channel_tags.ilike(f"%{raw_tag}%"),
-                Video.channel_title.in_(
-                    db.query(ChannelTag.channel_title).filter(
-                        ChannelTag.user_id == current_user.id,
-                        func.lower(ChannelTag.tag) == raw_tag,
-                    )
-                ),
-            )
-        )
+    if tag_filter and tag_filter.strip() != "ALL":
+        raw_tag = tag_filter.strip()
+        encoded_tag = json.dumps(raw_tag, ensure_ascii=False)
+        query = query.filter(or_(Video.tags_json.contains(encoded_tag, autoescape=True),
+                                (Video.tags_json.is_(None) & Video.channel_tags.ilike(f"%{raw_tag}%"))))
 
     total = query.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 1
@@ -274,21 +292,7 @@ def get_user_tags(
     """
     Get all distinct tags used across channels for the current user.
     """
-    tag_rows = db.query(ChannelTag.tag).filter(ChannelTag.user_id == current_user.id).distinct().all()
-    tags_set = {r[0].lower() for r in tag_rows if r[0]}
-
-    video_tags = db.query(Video.channel_tags).filter(
-        Video.user_id == current_user.id,
-        Video.channel_tags.isnot(None)
-    ).all()
-    for vt in video_tags:
-        if vt[0]:
-            for part in vt[0].split(","):
-                clean = part.strip().lstrip("#").lower()
-                if clean:
-                    tags_set.add(clean)
-
-    return sorted(list(tags_set))
+    return sorted({tag for video in db.query(Video).filter(Video.user_id == current_user.id).all() for tag in video.tags})
 
 
 @router.post("/channel-tags", response_model=ChannelTagRead)
@@ -297,39 +301,7 @@ def set_channel_tags(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Set tags for all videos belonging to a specific channel and persist in ChannelTag table.
-    """
-    ch_title = payload.channel_title.strip()
-    if not ch_title:
-        raise HTTPException(status_code=400, detail="Channel title is required.")
-
-    tags = [t.strip().lstrip("#").lower() for t in payload.tags.split(",") if t.strip()]
-    tags_str = ", ".join(tags) if tags else None
-
-    # Update all videos from this channel for current user
-    db.query(Video).filter(
-        Video.user_id == current_user.id,
-        Video.channel_title == ch_title
-    ).update({"channel_tags": tags_str})
-
-    # Update ChannelTag table
-    db.query(ChannelTag).filter(
-        ChannelTag.user_id == current_user.id,
-        ChannelTag.channel_title == ch_title
-    ).delete()
-    for t in tags:
-        db.add(ChannelTag(user_id=current_user.id, channel_title=ch_title, tag=t))
-
-    for changed in db.query(Video).filter(Video.user_id == current_user.id, Video.channel_title == ch_title).all():
-        enqueue_sync(db, changed)
-    db.commit()
-    updated_ids = db.query(Video.id).filter(
-        Video.user_id == current_user.id, Video.channel_title == ch_title
-    ).all()
-    for (video_id,) in updated_ids:
-        sync_video_async(video_id)
-    return ChannelTagRead(channel_title=ch_title, tags=tags)
+    raise HTTPException(410, "Channel tags have been removed. Assign tags to individual videos instead.")
 
 
 @router.get("/channels", response_model=List[ChannelItem])
@@ -358,21 +330,13 @@ def list_channels(
     )
 
     channel_tags_map = {}
-    channel_tag_rows = (
-        db.query(ChannelTag.channel_title, ChannelTag.tag)
-        .filter(ChannelTag.user_id == current_user.id)
-        .all()
-    )
-    for ch, tg in channel_tag_rows:
-        if ch not in channel_tags_map:
-            channel_tags_map[ch] = []
-        if tg and tg not in channel_tags_map[ch]:
-            channel_tags_map[ch].append(tg)
+    for video in db.query(Video).filter(Video.user_id == current_user.id).all():
+        channel_tags_map.setdefault(video.channel_title, set()).update(video.tags)
 
     channel_items = []
     for row in results:
         ch_title = row.channel_title
-        tags = channel_tags_map.get(ch_title, [])
+        tags = sorted(channel_tags_map.get(ch_title, set()))
         if not tags and row.channel_tags:
             tags = [t.strip().lstrip("#").lower() for t in row.channel_tags.split(",") if t.strip()]
         tags_str = ", ".join(tags) if tags else None
@@ -429,6 +393,9 @@ def update_video(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found.")
 
+    if payload.processing_paused is not None:
+        video.processing_paused = int(payload.processing_paused)
+
     if payload.watch_status is not None:
         video.watch_status = payload.watch_status.strip().replace(" ", "_").upper()
 
@@ -442,36 +409,14 @@ def update_video(
     if payload.chatgpt_link is not None:
         video.chatgpt_link = payload.chatgpt_link.strip() if payload.chatgpt_link else None
 
-    if payload.channel_tags is not None:
-        tags = [t.strip().lstrip("#").lower() for t in payload.channel_tags.split(",") if t.strip()]
-        tags_str = ", ".join(tags) if tags else None
-        video.channel_tags = tags_str
-        if video.channel_title:
-            db.query(Video).filter(
-                Video.user_id == current_user.id,
-                Video.channel_title == video.channel_title
-            ).update({"channel_tags": tags_str})
-            db.query(ChannelTag).filter(
-                ChannelTag.user_id == current_user.id,
-                ChannelTag.channel_title == video.channel_title
-            ).delete()
-            for t in tags:
-                db.add(ChannelTag(user_id=current_user.id, channel_title=video.channel_title, tag=t))
-
-    if payload.channel_tags is not None and video.channel_title:
-        for changed in db.query(Video).filter(Video.user_id == current_user.id, Video.channel_title == video.channel_title).all():
-            enqueue_sync(db, changed)
+    if "tags" in payload.model_fields_set:
+        video.tags = payload.tags or []
+    elif "channel_tags" in payload.model_fields_set:
+        video.tags = (payload.channel_tags or "").split(",")
     db.commit()
     db.refresh(video)
 
-    if payload.channel_tags is not None and video.channel_title:
-        updated_video_ids = db.query(Video.id).filter(
-            Video.user_id == current_user.id, Video.channel_title == video.channel_title
-        ).all()
-        for (updated_video_id,) in updated_video_ids:
-            sync_video_async(updated_video_id)
-    else:
-        sync_video_async(video.id)
+    sync_video_async(video.id)
 
     return VideoRead.model_validate(video)
 

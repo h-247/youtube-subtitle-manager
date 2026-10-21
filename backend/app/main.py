@@ -132,6 +132,9 @@ async def lifespan(app: FastAPI):
                 res = conn.exec_driver_sql("PRAGMA table_info(videos)")
                 cols = [r[1] for r in res.fetchall()]
                 if cols:
+                    for name, sql_type in (("playlist_items_json", "TEXT"), ("tags_json", "TEXT"), ("sites_synced", "INTEGER DEFAULT 0 NOT NULL"), ("download_complete", "INTEGER DEFAULT 0 NOT NULL"), ("processing_paused", "INTEGER DEFAULT 0 NOT NULL"), ("error_category", "VARCHAR(32)")):
+                        if name not in cols:
+                            conn.exec_driver_sql(f"ALTER TABLE videos ADD COLUMN {name} {sql_type}")
                     if "channel_url" not in cols:
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN channel_url VARCHAR(512)")
                     if "watch_status" not in cols:
@@ -146,6 +149,8 @@ async def lifespan(app: FastAPI):
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN sites_sync_token TEXT")
                 if user_cols and "sites_user_id" not in user_cols:
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN sites_user_id VARCHAR(255)")
+                if user_cols and "chatgpt_prompt_link" not in user_cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN chatgpt_prompt_link TEXT")
                 if user_cols:
                     conn.exec_driver_sql(
                         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_sites_user_id ON users (sites_user_id)"

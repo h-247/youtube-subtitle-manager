@@ -1,0 +1,1 @@
+ALTER TABLE hosted_job_leases ADD COLUMN last_run INTEGER NOT NULL DEFAULT 0;

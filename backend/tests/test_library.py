@@ -56,6 +56,8 @@ def test_ingest_playlist_with_duplicates(client, user_a, user_a_headers):
     mock_extracted = [
         {
             "video_id": "playlistVid1",
+            "playlist_title": "My Playlist, English",
+            "playlist_item_id": "item-id",
             "title": "Track 1",
             "channel_title": "Artist",
             "duration": 100,
@@ -64,6 +66,8 @@ def test_ingest_playlist_with_duplicates(client, user_a, user_a_headers):
         },
         {
             "video_id": "playlistVid2",
+            "playlist_title": "My Playlist, English",
+            "playlist_item_id": "item-id-2",
             "title": "Track 2",
             "channel_title": "Artist",
             "duration": 200,
@@ -79,7 +83,7 @@ def test_ingest_playlist_with_duplicates(client, user_a, user_a_headers):
         "error_message": None,
     }
 
-    with patch("app.api.videos.extract_items_from_url", return_value=mock_extracted), \
+    with patch("app.api.videos.fetch_managed_playlist", return_value=mock_extracted), \
          patch("app.api.videos.download_subtitles", return_value=mock_sub_res):
 
         # Ingest both tracks
@@ -542,7 +546,7 @@ def test_concurrent_job_prevention_on_same_video(client, db_session, user_a, use
         assert mock_queue.call_count == 0
 
 
-def test_async_worker_drive_upload_failure_retries_and_succeeds(db_session, user_a):
+def test_async_worker_drive_upload_failure_retries_and_succeeds(db_session, user_a, tmp_path):
     import json
     from app.services.ingestion_service import _process_video_worker
     from app.models.video import Video
@@ -573,6 +577,10 @@ def test_async_worker_drive_upload_failure_retries_and_succeeds(db_session, user
         "file_path": "fake_path.vtt",
         "error_message": None,
     }
+
+    subtitle_path = tmp_path / "subtitle.vtt"
+    subtitle_path.write_text("Saved subtitles", encoding="utf-8")
+    mock_sub["file_path"] = str(subtitle_path)
 
     drive_attempts = 0
     def mock_upload(file_path, title, credentials_data, delete_on_success):
@@ -703,10 +711,10 @@ def test_channel_tags_and_filter_by_tag(client, db_session, user_a, user_a_heade
     assert len(res_en.json()["items"]) == 1
     assert res_en.json()["items"][0]["video_id"] == "tagVid1"
 
-    # Set new tags for channel "BBC English" -> "en, ss"
-    res_set = client.post(
-        "/api/videos/channel-tags",
-        json={"channel_title": "BBC English", "tags": "en, ss"},
+    # Set tags on this video; channel assignment is no longer supported.
+    res_set = client.patch(
+        f"/api/videos/{v1.id}",
+        json={"tags": ["en", "ss"]},
         headers=user_a_headers,
     )
     assert res_set.status_code == status.HTTP_200_OK

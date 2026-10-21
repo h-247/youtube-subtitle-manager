@@ -1,0 +1,1 @@
+ALTER TABLE `videos` ADD `tags_json` text;

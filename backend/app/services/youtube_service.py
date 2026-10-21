@@ -202,6 +202,7 @@ def extract_items_from_url(url: str) -> List[Dict[str, Any]]:
             if not entry:
                 continue
             parsed = parse_video_item(entry)
+            parsed["playlist_title"] = info.get("title")
             if parsed.get("video_id"):
                 items.append(parsed)
         return items

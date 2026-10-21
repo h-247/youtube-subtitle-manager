@@ -1,11 +1,36 @@
-name: Tests and frontend build
+name: Release and companion checks
 on:
   push:
   pull_request:
 permissions:
   contents: read
 jobs:
-  backend:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16'
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:scheduled
+      - run: npm run db:migrate:local
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-browser-traces
+          path: test-results
+  companion-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,20 +40,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
+      - run: python -m alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./ci-migrations.db
       - run: python -m pytest tests -q
         working-directory: backend
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build

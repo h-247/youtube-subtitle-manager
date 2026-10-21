@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791794479810,
+      "tag": "0000_furry_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791797246156,
+      "tag": "0001_slow_krista_starr",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791975072504,
+      "tag": "0002_equal_mesmero",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792119202164,
+      "tag": "0003_illegal_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792398393193,
+      "tag": "0004_absurd_mandrill",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792504079568,
+      "tag": "0005_rainy_adam_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792506113080,
+      "tag": "0006_worthless_silver_samurai",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792579878315,
+      "tag": "0007_hosted_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792579878316,
+      "tag": "0008_hosted_job_fairness",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792603997212,
+      "tag": "0009_user_preferences",
+      "breakpoints": true
+    }
+  ]
+}

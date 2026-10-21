@@ -1,13 +1,17 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, HttpUrl, Field, ConfigDict
 
 
 class VideoIngestRequest(BaseModel):
+    mode: Optional[Literal["video", "playlist"]] = None
+    tags: List[str] = Field(default_factory=list, max_length=50)
     url: str = Field(..., description="YouTube video URL, Shorts URL, or Playlist URL")
 
 
 class VideoUpdate(BaseModel):
+    tags: Optional[List[str]] = None
+    processing_paused: Optional[bool] = None
     status: Optional[str] = Field(None, description="Subtitle status: PENDING, PROCESSING, COMPLETED, NO_SUBTITLES, FAILED")
     watch_status: Optional[str] = Field(None, description="Watch status: TO_DO, DOING, DONE")
     chatgpt_link: Optional[str] = Field(None, description="Custom link to ChatGPT conversation")
@@ -35,6 +39,7 @@ class ChannelItem(BaseModel):
 class VideoRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    tags: List[str] = Field(default_factory=list)
     id: int
     user_id: int
     video_id: str
@@ -52,6 +57,9 @@ class VideoRead(BaseModel):
     drive_file_id: Optional[str] = None
     drive_file_url: Optional[str] = None
     chatgpt_link: Optional[str] = None
+    processing_paused: bool = False
+    error_category: Optional[str] = None
+    download_complete: bool = False
     retry_count: int = 0
     progress_message: Optional[str] = None
     error_message: Optional[str] = None

@@ -1,0 +1,6 @@
+# Optional local OAuth configuration. Copy this file to .dev.vars and add real
+# credentials there; never commit .dev.vars.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_TOKEN_ENCRYPTION_KEY=
+HOSTED_JOBS_TOKEN=

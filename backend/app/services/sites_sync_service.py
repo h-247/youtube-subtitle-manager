@@ -79,26 +79,46 @@ def get_pairing_identity(token: str) -> dict[str, str] | None:
         return None
 
 
+def get_prompt_link(encrypted_token: str) -> str | None:
+    token = decrypt_token(encrypted_token)
+    response = httpx.get(
+        settings.SITES_SYNC_URL.rstrip("/") + "/api/sync/prompt-link",
+        headers=_site_headers(token), timeout=10,
+    )
+    response.raise_for_status()
+    value = response.json().get("chatgpt_prompt_link")
+    return value if isinstance(value, str) else None
+
+
+def set_prompt_link(encrypted_token: str, value: str | None) -> None:
+    token = decrypt_token(encrypted_token)
+    response = httpx.put(
+        settings.SITES_SYNC_URL.rstrip("/") + "/api/sync/prompt-link",
+        headers=_site_headers(token), json={"chatgpt_prompt_link": value}, timeout=10,
+    )
+    response.raise_for_status()
+
+
 def _payload(video: Video) -> dict:
     return {
         "video_id": video.video_id, "youtube_url": video.youtube_url, "title": video.title,
         "channel_title": video.channel_title, "channel_url": video.channel_url,
         "duration": video.duration, "thumbnail_url": video.thumbnail_url,
         "status": video.status, "watch_status": video.watch_status,
-        "channel_tags": video.channel_tags, "subtitle_type": video.subtitle_type,
+        "tags": video.tags, "playlist_items": video.playlist_items, "channel_tags": video.channel_tags, "subtitle_type": video.subtitle_type,
         "subtitle_language": video.subtitle_language, "subtitle_text": video.subtitle_text,
         "drive_file_id": video.drive_file_id, "drive_file_url": video.drive_file_url,
         "chatgpt_link": video.chatgpt_link, "retry_count": video.retry_count or 0,
         "progress_message": video.progress_message, "error_message": video.error_message,
         "created_at": video.created_at.isoformat() if video.created_at else None,
         "updated_at": video.updated_at.isoformat() if video.updated_at else None,
+        "processing_paused": bool(video.processing_paused), "error_category": video.error_category,
         "last_attempt_at": None,
     }
 
 
 def sync_video(db: Session, video: Video) -> None:
-    from app.services.durable_jobs import enqueue_sync
-    enqueue_sync(db, video)
+    # ORM events persist changes atomically with the video.
     db.commit()
 
 
@@ -157,8 +177,11 @@ def sync_video_async(video_db_id: int) -> None:
 
 def sync_user_async(user_id: int) -> None:
     with SessionLocal() as db:
-        for video in db.query(Video).filter(Video.user_id == user_id).all():
-            from app.services.durable_jobs import enqueue_sync
+        from app.models.sync_operation import SyncOperation
+        # Re-pairing never bulk uploads acknowledged records or replaces tombstones.
+        db.query(SyncOperation).filter(SyncOperation.user_id == user_id).update({"next_attempt": 0})
+        from app.services.durable_jobs import enqueue_sync
+        for video in db.query(Video).filter(Video.user_id == user_id, Video.sites_synced == 0).all():
             enqueue_sync(db, video)
         db.commit()
 
@@ -172,6 +195,12 @@ def _timestamp(value):
 
 
 def reconcile_library(db: Session, user: User) -> dict:
+    from app.services.durable_jobs import _delivery_lock
+    with _delivery_lock:
+        return _reconcile_library(db, user)
+
+
+def _reconcile_library(db: Session, user: User) -> dict:
     """Pull newer Site edits and repair missing outbound records without echoing pulls."""
     from app.models.sync_operation import SyncOperation
     from app.models.channel_tag import ChannelTag
@@ -209,34 +238,38 @@ def reconcile_library(db: Session, user: User) -> dict:
     videos = db.query(Video).filter(Video.user_id == user.id).all()
     pending_channels = {v.channel_title for v in videos if v.video_id in pending}
     pulled = queued = 0
+    pulled_ids = set()
     db.info["sites_pull"] = True
     try:
         for video in videos:
+            item = remote.get(video.video_id)
+            if item is None and video.sites_synced:
+                # Deletion wins over offline edits for previously acknowledged records.
+                db.query(SyncOperation).filter(SyncOperation.user_id == user.id, SyncOperation.video_id == video.video_id).delete()
+                db.delete(video)
+                pulled_ids.add(video.id)
+                continue
             if video.video_id in pending:
                 continue
-            item = remote.get(video.video_id)
             if item is None:
                 enqueue_sync(db, video)
                 queued += 1
                 continue
+            video.sites_synced = 1
             if _timestamp(item["updated_at"]) <= _timestamp(video.updated_at):
                 continue
             if item.get("watch_status") in {"TO_DO", "DOING", "DONE"}:
                 video.watch_status = item["watch_status"]
+            if "processing_paused" in item:
+                video.processing_paused = int(bool(item["processing_paused"]))
             video.chatgpt_link = item.get("chatgpt_link")
-            if video.channel_title not in pending_channels:
-                tags = channel_tags.get(video.channel_title, set()) | {
-                    tag.strip().lstrip("#").lower() for tag in (item.get("channel_tags") or "").split(",") if tag.strip()
-                }
-                video.channel_tags = ", ".join(sorted(tags)) or None
-                db.query(ChannelTag).filter(ChannelTag.user_id == user.id, ChannelTag.channel_title == video.channel_title).delete()
-                for tag in sorted(tags):
-                    db.add(ChannelTag(user_id=user.id, channel_title=video.channel_title, tag=tag))
+            video.tags = item.get("tags") if isinstance(item.get("tags"), list) else [t.strip() for t in (item.get("channel_tags") or "").split(",") if t.strip()]
             if item.get("drive_file_id") and item.get("drive_file_url"):
                 video.drive_file_id = item["drive_file_id"]
                 video.drive_file_url = item["drive_file_url"]
             video.updated_at = _timestamp(item["updated_at"])
-            pulled += 1
+            pulled_ids.add(video.id)
+        pulled = len(pulled_ids)
         db.commit()
     finally:
         db.info.pop("sites_pull", None)

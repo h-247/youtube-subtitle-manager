@@ -12,7 +12,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $frontendDir 'node_modules'))) {
 }
 
 $Host.UI.RawUI.WindowTitle = "YouTube Subtitle Manager - Frontend :$Port"
-$env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$BackendPort/api"
+$env:NEXT_DIST_DIR = ".next-dev-$Port"
+$env:BACKEND_API_URL = "http://127.0.0.1:$BackendPort/api"
 Push-Location $frontendDir
 try {
     & npm.cmd run dev -- --hostname 127.0.0.1 --port $Port

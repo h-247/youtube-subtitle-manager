@@ -10,7 +10,12 @@ export type WatchStatus = "TO_DO" | "DOING" | "DONE";
 export type VideoStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "NO_SUBTITLES" | "FAILED";
 export type SubtitleType = "MANUAL" | "AUTO" | "NONE";
 
+export type VideoIngestInput = { url: string; mode: "video" | "playlist"; tags: string[] };
+export function videoTags(video: { tags?: string[]; channel_tags?: string | null }): string[] {
+  return Array.isArray(video.tags) ? video.tags : (video.channel_tags || "").split(",").map(t => t.trim()).filter(Boolean);
+}
 export interface Video {
+  tags?: string[];
   id: number;
   user_id: number;
   video_id: string;
@@ -28,6 +33,9 @@ export interface Video {
   drive_file_id: string | null;
   drive_file_url: string | null;
   chatgpt_link: string | null;
+  processing_paused?: boolean;
+  error_category?: string | null;
+  download_complete?: boolean;
   retry_count: number;
   progress_message: string | null;
   error_message: string | null;
@@ -73,3 +81,9 @@ export interface ChannelItem {
   tags: string[];
   video_count: number;
 }
+
+export type YouTubeStatus = {
+  is_configured: boolean; is_connected: boolean; connection_error?: string | null;
+  connect_url: string; pending_count: number; removed_count: number; failed_count: number;
+  jobs: Array<{video_id: string; playlist_id: string; state: string; error: string | null}>;
+};

@@ -64,3 +64,37 @@ Thumbs.db
 
 # Isolated ChatGPT Sites checkout
 /.sites-checkout/
+
+frontend/test-results/
+frontend/playwright-report/
+
+frontend/.next-dev*/
+frontend/.next-e2e/
+
+# The application is a Vinext/Workers project at the repository root.
+node_modules/
+.next/
+.vinext/
+.wrangler/
+.sites-runtime/
+.env*
+!.dev.vars.example
+.dev.vars*
+!.dev.vars.example
+!/lib/
+!/lib/**
+!/build/
+!/build/**
+typescript-stack/
+typescript-stack/.wrangler/
+typescript-stack/.next/
+typescript-stack/.vinext/
+typescript-stack/dist/
+scripts/scripts/
+test-results/
+playwright-report/
+playwright/.cache/
+outputs/
+*.tsbuildinfo
+/*.tar.gz
+!/.env.example

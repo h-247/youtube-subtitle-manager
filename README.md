@@ -1,282 +1,96 @@
 # YouTube Subtitle Manager
 
-A complete, local-first full-stack application for archiving, managing, and syncing YouTube subtitles. Built with **Next.js (App Router, TypeScript, Tailwind CSS)**, **FastAPI (Python, SQLAlchemy, Alembic)**, **PostgreSQL**, **yt-dlp**, and **Google Drive OAuth**.
+A React and TypeScript app for saving YouTube videos, retrieving English captions, organizing a subtitle library, and optionally uploading captions to Google Drive. The same Vinext application runs locally in the Cloudflare Workers emulator and on ChatGPT Sites.
 
----
+## Technology
 
-## 🚀 Features
+The repository root is the canonical release application. `app/`, `lib/`, `components/`, `build/`, `db/`, `drizzle/`, and the root npm lockfile ship together. Root CI installs, migrates, typechecks, tests, builds, and runs browser checks. `backend/` is the optional laptop FastAPI/yt-dlp companion for downloads that YouTube blocks from cloud IPs, with its own database and durable sync outbox. `frontend/` is its legacy local UI; neither is required to run the release app. `typescript-stack/` is an ignored, obsolete local snapshot: it is excluded from Git, TypeScript, tests, builds, and releases.
 
-- **Separated Architecture:** Modern Next.js TypeScript frontend and high-performance FastAPI backend.
-- **Secure Authentication & Scoping:** JWT-based user authentication, password hashing with bcrypt, and strict per-user authorization preventing cross-user data access.
-- **YouTube Ingestion:** Processes standard YouTube videos, Shorts (`/shorts/`), and playlists (`/playlist?list=...`), with per-user duplicate detection (`UNIQUE(user_id, video_id)`).
-- **Intelligent Subtitle Selection & 429 Resilience:** Prefers human/manual English captions; automatically falls back to auto-generated English captions; handles videos without subtitles and failures gracefully without crashing. Automatically recovers from transient YouTube HTTP 429 rate limits with configurable bounded exponential backoff.
-- **Retryable Ingestion on Rate Limits:** When subtitle extraction fails specifically due to temporary YouTube HTTP 429 rate limiting, subsequent submissions of the URL reprocess the existing record instead of being permanently rejected as duplicates. Ordinary duplicates and non-rate-limited failures remain deduplicated.
-- **Isolated Google Drive Sync:** Direct OAuth2 integration that uploads subtitles to Google Drive and deletes local temporary subtitle artifacts *only after confirmed upload*.
-- **Comprehensive Video Library:** Backend search (title, channel, video ID), status filtering, editing status and ChatGPT conversation links, direct external links, and record deletion without deleting Google Drive files.
-- **Robust Automated Tests:** Comprehensive pytest suite covering authentication, user isolation, URL parsing, subtitle selection, 429 retry backoff, Drive uploads, duplicate detection, and library management with mocked external dependencies.
+- React, TypeScript, Tailwind CSS, and the official Sites Vinext starter (`sites()` integration)
+- TypeScript API routes on the Cloudflare Workers runtime
+- Cloudflare D1 with Drizzle ORM and committed SQL migrations in `drizzle/`
+- Zod request validation, Vitest unit tests, and Playwright browser tests
+- Node.js, npm, Wrangler, and the committed `package-lock.json`
 
----
+The Site uses the `DB` D1 binding declared in `.openai/hosting.json`. Captions are stored as text in D1, so R2 is currently unused. The local D1 database is persisted under `.wrangler/state`; local and hosted databases remain separate. Deploying does not copy local rows to the hosted database.
 
-## 🛠 Tech Stack
+## Run on Windows
 
-- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, Lucide React
-- **Backend:** FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic, Pydantic v2
-- **Database:** PostgreSQL (with SQLite support for unit testing)
-- **External Tools:** `yt-dlp` (no YouTube cookies required), Google Drive API v3
-- **Containerization:** Docker, Docker Compose
-
----
-
-## 📋 Prerequisites
-
-- **Python 3.11+**
-- **Node.js 18+** & **npm**
-- **Docker & Docker Compose** (optional for containerized setup)
-- **PostgreSQL 14+** (if running directly without Docker; SQLite can also be used for local testing)
-
----
-
-## ⚡ Quick Start: Docker Compose
-
-The fastest way to spin up the entire stack (PostgreSQL database, FastAPI backend, and Next.js frontend) is using Docker Compose:
-
-1. **Clone the repository and enter the directory:**
-   ```powershell
-   cd "C:\Users\toanv\OneDrive\Desktop\Youtube subtitle manager"
-   ```
-
-2. **Create the environment file:**
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-3. **Start services:**
-   ```powershell
-   docker compose up --build
-   ```
-
-4. **Access the application:**
-   - **Frontend:** [http://localhost:3000](http://localhost:3000)
-   - **Backend API Docs (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
-   - **API Health Check:** [http://localhost:8000/health](http://localhost:8000/health)
-
----
-
-## 💻 Direct Local Development Setup (Windows PowerShell)
-
-### 1. Backend Setup
-
-1. **Navigate to the backend folder and create a virtual environment:**
-   ```powershell
-   cd backend
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
-
-2. **Install Python dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Environment Variables:**
-   Create a `.env` file in `backend/` or root (refer to `.env.example`).
-   ```env
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/youtube_subtitles
-   SECRET_KEY=super-secret-jwt-key-min-32-chars-long
-   FRONTEND_URL=http://localhost:3000
-   GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=your-google-client-secret
-   GOOGLE_REDIRECT_URI=http://localhost:8000/api/drive/callback
-   SUBTITLE_MAX_RETRIES=3
-   SUBTITLE_RETRY_DELAY=1.0
-   ```
-
-   *(Note: If testing locally without PostgreSQL, you can use SQLite: `DATABASE_URL=sqlite:///./dev.db`)*
-   *(Note: `SUBTITLE_MAX_RETRIES` sets bounded retry attempts for HTTP 429 rate limits; `SUBTITLE_RETRY_DELAY` sets the initial backoff delay in seconds.)*
-
-4. **Run Alembic Migrations:**
-   ```powershell
-   alembic upgrade head
-   ```
-
-5. **Start FastAPI Development Server:**
-   ```powershell
-   uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
-   ```
-   *(Note: Development and server access logs automatically sanitize OAuth callback requests by redacting authorization codes and sensitive parameters, e.g. `GET /api/drive/callback?code=[REDACTED]&state=...`, preventing raw codes from being retained in log outputs or storage.)*
-
----
-
-### 2. Frontend Setup
-
-1. **Open a new PowerShell terminal and navigate to the frontend folder:**
-   ```powershell
-   cd frontend
-   ```
-
-2. **Install Node.js dependencies:**
-   ```powershell
-   npm install
-   ```
-
-3. **Start Next.js Development Server:**
-   ```powershell
-   $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8001/api"
-   npm run dev
-   ```
-
-4. **Open in browser:**
-   Visit [http://localhost:3000](http://localhost:3000).
-
-### Sync local subtitle downloads to ChatGPT Sites
-
-Run the local frontend and backend above. Sign in to your ChatGPT Site and select **Pair Local App**. Copy the code, switch to the local app, select **ChatGPT Site** on the login page, and paste it. The local account is created or linked to the Site's stable user ID automatically; the pairing also enables outbound library sync. The local backend stores the code encrypted, and Sites stores only its hash. Creating a fresh code revokes the previous one; sign in locally again with the new code.
-
-Newly ingested videos, progress, downloaded subtitle text, edits, tags, and deletions sync to the paired Sites account. The Site dashboard can then show the library and handle its own Google Drive sync. This sync is outbound from the laptop, so it does not require a public tunnel. Keep the backend running while downloading; Sites will show new changes after its dashboard refreshes.
-
----
-
-## 🔑 Google Drive OAuth 2.0 Setup Guide
-
-To enable uploading subtitles directly to Google Drive:
-
-1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (e.g. `YouTube Subtitle Manager`).
-3. Under **APIs & Services > Library**, search for **Google Drive API** and click **Enable**.
-4. Go to **APIs & Services > OAuth consent screen**:
-   - Choose **External** (or Internal for Workspace).
-   - Enter App Name and support email.
-   - Under Scopes, add `.../auth/drive.file`.
-   - Add your Google account as a Test User if the app is in testing mode.
-5. Go to **APIs & Services > Credentials**:
-   - Click **Create Credentials > OAuth client ID**.
-   - Select Application type: **Web application**.
-   - Under **Authorized redirect URIs**, add:
-     `http://localhost:8000/api/drive/callback`
-6. Copy the **Client ID** and **Client Secret** into your `.env` file:
-   ```env
-   GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=xxxxxxxx
-   ```
-7. On the frontend dashboard, click **Connect Drive** to authorize.
-
-### 🔧 Troubleshooting OAuth Errors (Google Cloud Console Checks)
-
-When a token exchange fails, the server records a safe structured diagnostic indicating the provider error class without logging sensitive authorization codes, tokens, or client secrets. Development and server access logs are also automatically sanitized so authorization codes are never retained in server logs (`code=[REDACTED]`). The frontend displays an actionable configuration error. If you encounter an OAuth error, verify the following settings in Google Cloud Console:
-
-1. **`invalid_client` (Client Identification or Secret Mismatch)**
-   - **Google Cloud Console Location:** **APIs & Services > Credentials** > Click your OAuth 2.0 Client ID under **OAuth 2.0 Client IDs**.
-   - **Values to Compare:**
-     - **Client ID:** Compare the **Client ID** displayed in the console with `GOOGLE_CLIENT_ID` in your `.env`. Verify there are no missing characters or trailing whitespace.
-     - **Client Secret:** Compare the **Client secret** displayed in the console with `GOOGLE_CLIENT_SECRET` in your `.env`. If the secret was reset or regenerated, update `.env` with the new value.
-     - **Application Type:** Verify that the client is configured as **Web application** (not Desktop app, Android, iOS, or Service Account).
-     - **API Enabled:** Ensure the credential belongs to the project where **Google Drive API** is enabled under **APIs & Services > Enabled APIs & services**.
-
-2. **`invalid_grant` (Expired, Reused, or Unauthorized Token Request)**
-   - **Google Cloud Console Location:** **APIs & Services > OAuth consent screen**.
-   - **Values & Configuration to Check:**
-     - **Test Users:** If your consent screen **Publishing status** is **Testing**, verify that the Google account you are authenticating with is listed under **Test users**. Accounts not listed cannot exchange tokens in testing mode.
-     - **Fresh Authorization Code:** OAuth authorization codes expire within minutes and can only be used once. If a request was interrupted or failed, return to the dashboard and initiate a fresh consent request.
-     - **System Clock Synchronization:** Ensure your host machine's system clock is synchronized with network time (NTP / Windows Time). Clock skew between your machine and Google servers can invalidate authorization codes.
-     - **Confidential Client Web Flow:** Ensure PKCE code verifier autogeneration is disabled (`autogenerate_code_verifier=False`) so the confidential web server authorization code grant functions properly with client secret.
-
-3. **`redirect_uri_mismatch` (Redirect URI Configuration Error)**
-   - **Google Cloud Console Location:** **APIs & Services > Credentials** > Select your Web Application client > **Authorized redirect URIs**.
-   - **Values to Compare:**
-     - The URI configured in `GOOGLE_REDIRECT_URI` (`http://localhost:8000/api/drive/callback`) must match an entry in **Authorized redirect URIs** exactly, character-for-character.
-     - **Scheme:** `http://` for local development (not `https://` unless using local SSL).
-     - **Host:** `localhost` vs `127.0.0.1` (Google treats these as separate domains; they must match your browser navigation host).
-     - **Port:** Exact port matching (`:8000`).
-     - **Path:** `/api/drive/callback` (ensure no trailing slash unless also registered with a trailing slash).
-
----
-
-## 🧪 Verification & Testing
-
-### Backend Automated Tests
-
-Run the full pytest suite (covering authentication, user isolation, YouTube extraction, subtitle selection preference, Drive upload/cleanup, duplicate detection, search, and filtering):
+Use Node.js 22.13 or newer, Git, and npm. In PowerShell, from the repository root:
 
 ```powershell
-cd backend
-.\venv\Scripts\python -m pytest -v tests
+npm ci
+Copy-Item .dev.vars.example .dev.vars
+npm run build
+npm run test:scheduled
+npm run db:migrate:local
+npm run dev
 ```
 
-### Frontend Typecheck & Build
+Open `http://localhost:5173`. Sites' local development integration simulates ChatGPT sign-in. Google Drive and YouTube playlist account features need OAuth credentials; ordinary local development and subtitle retrieval do not.
 
-Ensure TypeScript types and Next.js production builds compile with zero errors:
+To add Drive or playlist OAuth credentials, edit the ignored `.dev.vars` file. Register `http://localhost:5173/app/api/drive/callback` as an authorized redirect URI in your Google OAuth client. Generate a fresh encryption key in PowerShell with:
 
 ```powershell
-cd frontend
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
+Set the result as `GOOGLE_TOKEN_ENCRYPTION_KEY` in `.dev.vars`, along with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Never place secrets in source code or client-side variables.
+
+## Apply local database migrations
+
+Build once so Wrangler can read the generated Worker configuration, then apply the committed Drizzle SQL migrations to the persistent local D1 emulator:
+
+```powershell
+npm run build
+npm run db:migrate:local
+```
+
+The schema in `db/schema.ts` and the ordered SQL files in `drizzle/` are shared by local and hosted deployments. `npm run db:generate` creates a migration after a schema change; review and commit the generated SQL and Drizzle metadata.
+
+## Production preview
+
+Build the Worker, apply local migrations, then run the built Worker through Wrangler/Miniflare:
+
+```powershell
+npm run build
+npm run db:migrate:local
+npm start
+```
+
+Wrangler prints the local preview URL. It uses the same D1 persistence directory as the local migration command. Stop the preview with `Ctrl+C`.
+
+## Checks
+
+Hosted work runs from the Worker's every-minute scheduled handler, independently of dashboard reads. D1 rows are the durable queue: caption text is checkpointed before Drive work, and playlist cleanup waits for saved captions. Per-user leases exclude overlapping invocations; a crashed invocation becomes recoverable after 15 minutes. External requests share a two-minute deadline per user, well below the lease. Retries preserve captions, backoff timestamps, and reserved Drive IDs. `npm run test:scheduled` invokes the built handler directly in Miniflare with a fresh database, avoiding Wrangler's static-asset scheduler proxy issue. To run local jobs against your development data, set `HOSTED_JOBS_TOKEN` and POST the protected endpoint; ordinary page loads never run jobs.
+
+Deploy the generated cron configuration along with the Worker. If a hosting provider does not register cron triggers, configure an external scheduler to POST `/api/internal/jobs/run` every minute with `Authorization: Bearer <HOSTED_JOBS_TOKEN>`. Set that secret in the runtime and scheduler; never expose it to browser code.
+
+```powershell
 npm run typecheck
+npm test
 npm run build
 ```
 
----
+Browser tests use Playwright against the built Worker in Miniflare with a fresh D1 database. The test host supplies deterministic YouTube and Drive responses at the outbound network boundary; no production routes are mocked. Tests cover import, saved SRT, Drive completion, edits after reload, deletion, token rotation, user isolation, and a Worker restart after remote upload success but before database confirmation. They assert that recovery reuses the same file without another caption request or upload. Gateway identity headers are supplied only to the local test host.
 
-## 📂 Project Structure
+The release gate also calls the actual Python companion HTTP adapter against that Worker. Install Python 3.11+ and `pip install -r backend/requirements.txt` (or use `backend/.venv`) before running the full browser suite:
 
-```
-.
-├── backend/
-│   ├── alembic/
-│   │   ├── env.py
-│   │   └── versions/
-│   │       └── 001_initial_schema.py
-│   ├── alembic.ini
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── auth.py          # Register, login, me, logout
-│   │   │   ├── deps.py          # Auth dependencies & DB session
-│   │   │   ├── drive.py         # Google Drive OAuth endpoints
-│   │   │   └── videos.py        # Ingestion, search, filter, edit, delete
-│   │   ├── models/
-│   │   │   ├── user.py          # User SQLAlchemy model
-│   │   │   └── video.py         # Video SQLAlchemy model with UNIQUE(user_id, video_id)
-│   │   ├── schemas/             # Pydantic v2 schemas
-│   │   ├── services/
-│   │   │   ├── auth_service.py      # Password hashing & JWT
-│   │   │   ├── drive_service.py     # Isolated Drive OAuth & conditional file deletion
-│   │   │   ├── subtitle_service.py  # Caption download & manual/auto selection
-│   │   │   └── youtube_service.py   # Video, Shorts & playlist extraction
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   └── main.py
-│   ├── tests/                   # 29 Comprehensive pytest tests
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── dashboard/page.tsx # Video library with search & filter
-│   │   │   ├── login/page.tsx
-│   │   │   ├── register/page.tsx
-│   │   │   ├── globals.css
-│   │   │   └── layout.tsx
-│   │   ├── components/
-│   │   │   ├── IngestModal.tsx
-│   │   │   ├── EditModal.tsx
-│   │   │   └── Navbar.tsx
-│   │   ├── lib/
-│   │   │   ├── api.ts           # Typed API client
-│   │   │   └── auth.tsx         # React Auth context
-│   │   └── types/index.ts
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── next.config.mjs
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
-└── README.md
+```powershell
+npx playwright install chromium
+npm run build
+npm run db:migrate:local
+npm run test:e2e
 ```
 
----
+Tests use local D1 state and fixtures; they do not upload local data to the hosted Site.
 
-## 🔒 Security & Privacy Notes
- 
- - Plaintext passwords and secrets are never committed to version control.
- - yt-dlp runs without requiring YouTube account cookies.
- - All video library records and operations are strictly scoped to the authenticated user ID.
- - Google Drive file access is scoped to the `drive.file` permission. Deleting a video record in the application library does not delete files from your Google Drive account.
- - Development and server access logs never retain OAuth callback authorization codes, tokens, or client secrets. Raw callback authorization codes in `GET /api/drive/callback?code=...` are automatically intercepted and sanitized (`code=[REDACTED]`) before access logs are recorded.
+The companion schema has its own committed Alembic chain. From `backend/`, run `python -m alembic upgrade head` before starting it. CI checks these migrations against a fresh SQLite database separately from the companion tests.
+
+The pairing contract is documented in [docs/sync-contract.md](docs/sync-contract.md).
+
+## Deploy through Sites
+
+The Sites plugin workflow builds and packages the pushed source for the existing Site. Keep its current audience and project ID. Configure production OAuth secrets through Sites runtime environment settings. D1 and R2 bindings are declared in `.openai/hosting.json`; do not copy local database files into deployment artifacts.
+
+Sites hosting, storage, and usage depend on the current ChatGPT plan and limits. The development tools and application dependencies are free and open source; hosting is not promised to be unlimited or free. See [ChatGPT Sites documentation](https://learn.chatgpt.com/docs/sites) for current availability and limits.

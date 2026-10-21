@@ -3,6 +3,10 @@ import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    const backend = (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api').replace(/\/+$/, '');
+    return [{ source: '/api/:path*', destination: `${backend}/:path*` }];
+  },
   images: {
     remotePatterns: [
       {
@@ -24,5 +28,5 @@ const nextConfig = {
 // Builds must not replace chunks being served by an active development server.
 export default (phase) => ({
   ...nextConfig,
-  distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
+  distDir: process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next'),
 });
