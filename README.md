@@ -1,39 +1,79 @@
-# YouTube Subtitle Manager on ChatGPT Sites
+# YouTube Subtitle Manager
 
-This version runs as a Vinext application on the Sites Worker runtime. It replaces FastAPI and PostgreSQL with same-origin Worker API routes and Sites D1. Library records are scoped to the authenticated ChatGPT user ID. The Site is private by default.
+A React and TypeScript app for saving YouTube videos, retrieving English captions, organizing a subtitle library, and optionally uploading captions to Google Drive. The same Vinext application runs locally in the Cloudflare Workers emulator and on ChatGPT Sites.
 
-## Features
+## Technology
 
-- ChatGPT sign-in and sign-out
-- Private video library with search, subtitle/watch-status filters, tags, and pagination
-- Video and Short ingestion; playlist ingestion adds up to 20 videos from the public playlist page
-- English caption selection, preferring manual captions and falling back to auto captions
-- SRT downloads, watch-status edits, ChatGPT links, channel tags, and record deletion
-- Import an English VTT or SRT file into a video that YouTube blocks from the Sites Worker; the imported captions are converted to SRT and can sync to Google Drive
-- Unlimited retries with capped exponential delay while the library is open; an in-flight record resumes when the dashboard is opened again
+- React, TypeScript, Tailwind CSS, and the official Sites Vinext starter (`sites()` integration)
+- TypeScript API routes on the Cloudflare Workers runtime
+- Cloudflare D1 with Drizzle ORM and committed SQL migrations in `drizzle/`
+- Zod request validation, Vitest unit tests, and Playwright browser tests
+- Node.js, npm, Wrangler, and the committed `package-lock.json`
 
-## Sites storage and API
+The Site uses the `DB` D1 binding declared in `.openai/hosting.json`. Captions are stored as text in D1, so R2 is currently unused. The local D1 database is persisted under `.wrangler/state`; local and hosted databases remain separate. Deploying does not copy local rows to the hosted database.
 
-Sites provisions the `DB` D1 binding from `.openai/hosting.json`. The Drizzle schema and generated SQL migration are in `db/schema.ts` and `drizzle/`. API routes live under `app/api/`.
+## Run on Windows
 
-YouTube captions are retrieved through YouTube's public player and timed-text HTTP endpoints. Workers do not run `yt-dlp` or a persistent Python worker; caption retries are driven by dashboard requests and pause while no dashboard is open.
-YouTube may challenge requests from the Sites Worker even when the configured session works on a local machine. In that case, import a VTT or SRT file from the affected video row. The automatic downloader continues to retry until captions are imported or retrieved.
-
-Google Drive uses the OAuth authorization-code flow and the least-privilege `drive.file` scope. Set these production Site secrets before users connect: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_TOKEN_ENCRYPTION_KEY` (a base64url-encoded random 32-byte key). Register `https://youtube-subtitle-manager.h-247.chatgpt.site/api/drive/callback` as an authorized redirect URI in the Google OAuth client and enable the Google Drive API. Per-user access and refresh tokens are encrypted with AES-GCM before they are stored in D1. Completed SRT files are uploaded into a `YouTube Subtitles` folder; connected users' completed files, including existing files, are synced one at a time as the dashboard refreshes, with uncapped retries and exponential backoff while the dashboard is active. Direct SRT downloads remain available.
-
-## Local development
-
-Requirements: Node.js 22.13 or later.
+Use Node.js 22.13 or newer, Git, and npm. In PowerShell, from the repository root:
 
 ```powershell
-npm run install:ci
-npm run db:generate
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_furry_omega_sentinel.sql
+npm ci
+Copy-Item .dev.vars.example .dev.vars
 npm run dev
 ```
 
-The portable local preview supports the seeded test identity `seedy@sites.test` via `/signin-with-chatgpt?return_to=/dashboard`. That mock sign-in is not included in the hosted Site.
+Open `http://localhost:5173`. Sites' local development integration simulates ChatGPT sign-in. Google Drive and YouTube playlist account features need OAuth credentials; ordinary local development and subtitle retrieval do not.
 
-## Sign in to the local downloader with this Site account
+To add Drive or playlist OAuth credentials, edit the ignored `.dev.vars` file. Register `http://localhost:5173/app/api/drive/callback` as an authorized redirect URI in your Google OAuth client. Generate a fresh encryption key in PowerShell with:
 
-On the signed-in Site, choose **Pair Local App** and copy the code. On the laptop, open the local app, choose **ChatGPT Site**, and paste the code. The local API verifies the code with this Site, links the local account to the stable Site user ID, and stores the code encrypted for outbound library sync. The Site keeps only the code hash. Generating a fresh code revokes the previous one; sign in locally again after rotating it.
+```powershell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
+Set the result as `GOOGLE_TOKEN_ENCRYPTION_KEY` in `.dev.vars`, along with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Never place secrets in source code or client-side variables.
+
+## Apply local database migrations
+
+Build once so Wrangler can read the generated Worker configuration, then apply the committed Drizzle SQL migrations to the persistent local D1 emulator:
+
+```powershell
+npm run build
+npm run db:migrate:local
+```
+
+The schema in `db/schema.ts` and the ordered SQL files in `drizzle/` are shared by local and hosted deployments. `npm run db:generate` creates a migration after a schema change; review and commit the generated SQL and Drizzle metadata.
+
+## Production preview
+
+Build the Worker, apply local migrations, then run the built Worker through Wrangler/Miniflare:
+
+```powershell
+npm run build
+npm run db:migrate:local
+npm start
+```
+
+Wrangler prints the local preview URL. It uses the same D1 persistence directory as the local migration command. Stop the preview with `Ctrl+C`.
+
+## Checks
+
+```powershell
+npm run typecheck
+npm test
+npm run build
+```
+
+Browser tests use Playwright and the local Sites auth simulation:
+
+```powershell
+npx playwright install chromium
+npm run test:e2e
+```
+
+Tests use local D1 state and fixtures; they do not upload local data to the hosted Site.
+
+## Deploy through Sites
+
+The Sites plugin workflow builds and packages the pushed source for the existing Site. Keep its current audience and project ID. Configure production OAuth secrets through Sites runtime environment settings. D1 and R2 bindings are declared in `.openai/hosting.json`; do not copy local database files into deployment artifacts.
+
+Sites hosting, storage, and usage depend on the current ChatGPT plan and limits. The development tools and application dependencies are free and open source; hosting is not promised to be unlimited or free. See [ChatGPT Sites documentation](https://learn.chatgpt.com/docs/sites) for current availability and limits.

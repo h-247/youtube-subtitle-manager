@@ -42,6 +42,9 @@
   ],
   "exclude": [
     "node_modules",
+    "frontend",
+    "backend",
+    "typescript-stack",
     "examples"
   ]
 }

@@ -1,57 +1,95 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.next-dev/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/tsconfig.tsbuildinfo
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+backend/.venv/
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+!frontend/src/lib/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
 
-# testing
-/coverage
+# Temporary files & storage
+backend/temp_subtitles/
+*.log
+*.sqlite
+*.db
 
-# next.js
-/.next/
-/.vinext/
-/out/
+# Environment files
+.env
+backend/.env
 
-# misc
+# Local YouTube cookies and test databases
+cookies.txt
+backend/cookies.txt
+test_app.db
+youtube_subtitles.db
+.playwright-cli/
+
+# OS files
 .DS_Store
-*.pem
+Thumbs.db
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Isolated ChatGPT Sites checkout
+/.sites-checkout/
 
-# env files (can opt-in for committing if needed)
+frontend/test-results/
+frontend/playwright-report/
+
+frontend/.next-dev*/
+frontend/.next-e2e/
+
+# The application is a Vinext/Workers project at the repository root.
+node_modules/
+.next/
+.vinext/
+.wrangler/
+.sites-runtime/
 .env*
-
-# vercel
-.vercel
-
-# typescript
-next-env.d.ts
-/tsconfig.tsbuildinfo
-
-# Maintained Vite plugin and worker sources.
+!.dev.vars.example
+.dev.vars*
+!/lib/
+!/lib/**
 !/build/
-/build/*
-!/build/connector-preview-plugin.mjs
-!/build/connector-preview-worker.mjs
-!/build/sites-vite-plugin.LICENSE
-!/build/sites-vite-plugin.ts
-!/build/sites-worker.ts
-
-/dist/
-/.wrangler/
-# Checkout-local execution profile and tool state; never publish them.
-/.sites-runtime/
-/.agents/
-/.codex/
-/outputs/
-/work/
+!/build/**
+typescript-stack/node_modules/
+typescript-stack/.wrangler/
+typescript-stack/.next/
+typescript-stack/.vinext/
+typescript-stack/dist/
+scripts/scripts/
+test-results/
+playwright-report/
+playwright/.cache/

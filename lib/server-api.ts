@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../app/chatgpt-auth";
+import { getChatGPTUser } from "../app/app/chatgpt-auth";
 
 export type LibraryVideo = {
   id: number;
@@ -539,8 +539,7 @@ export async function retryVideo(videoId: number, userId: string) {
   if (!existing) return;
   const retryCount = Number(existing.retry_count || 0);
   const last = existing.last_attempt_at ? Date.parse(existing.last_attempt_at) : 0;
-  const subtitleBackendConfigured = Boolean(env.SUBTITLE_BACKEND_URL?.trim() && env.SUBTITLE_BACKEND_TOKEN?.trim());
-  const verificationBlocked = !subtitleBackendConfigured && /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(existing.error_message || "");
+  const verificationBlocked = /YouTube verification required from Sites|Sites request was not accepted|Sign in to confirm you.re not a bot/i.test(existing.error_message || "");
   const delayMs = verificationBlocked
     ? 15 * 60_000
     : retryCount === 0 ? 0 : Math.min(60_000, 2_000 * 2 ** Math.min(retryCount - 1, 5));
@@ -553,44 +552,9 @@ export async function retryVideo(videoId: number, userId: string) {
 
   const attempt = retryCount + 1;
   try {
-    const subtitleBackendUrl = env.SUBTITLE_BACKEND_URL?.trim().replace(/\/+$/, "");
-    const subtitleBackendToken = env.SUBTITLE_BACKEND_TOKEN?.trim();
-    let metadata: Metadata | null = null;
-    let result: { subtitle: string; type: string; language: string };
-    if (subtitleBackendUrl && subtitleBackendToken) {
-      const response = await fetch(`${subtitleBackendUrl}/api/sites/subtitle`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${subtitleBackendToken}`,
-        },
-        body: JSON.stringify({
-          video_id: existing.video_id,
-          youtube_url: existing.youtube_url,
-        }),
-        signal: AbortSignal.timeout(150_000),
-        cache: "no-store",
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        detail?: string;
-        subtitle_text?: string;
-        subtitle_type?: string;
-        subtitle_language?: string;
-      };
-      if (!response.ok) throw new Error(payload.detail || `Subtitle backend request failed (${response.status}).`);
-      if (typeof payload.subtitle_text !== "string" || !payload.subtitle_text.trim()) {
-        throw new Error("Subtitle backend returned an empty subtitle track.");
-      }
-      result = {
-        subtitle: payload.subtitle_text,
-        type: payload.subtitle_type || "AUTO",
-        language: payload.subtitle_language || "en",
-      };
-    } else {
-      const extracted = await getMetadata(existing.video_id);
-      metadata = extracted.metadata;
-      result = await downloadEnglishCaptions(extracted.player);
-    }
+    const extracted = await getMetadata(existing.video_id);
+    const metadata = extracted.metadata;
+    const result = await downloadEnglishCaptions(extracted.player);
     const finished = new Date().toISOString();
     await db.prepare(
       "UPDATE videos SET status = 'COMPLETED', subtitle_type = ?, subtitle_language = ?, subtitle_text = ?, channel_title = COALESCE(?, channel_title), channel_url = COALESCE(?, channel_url), duration = COALESCE(?, duration), thumbnail_url = COALESCE(?, thumbnail_url), progress_message = 'Subtitles ready', error_message = NULL, error_category = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'PROCESSING' AND processing_paused = 0"
