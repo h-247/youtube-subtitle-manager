@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const runtime = new Miniflare({
-  modules: readdirSync("dist/server", { recursive: true }).filter(name => /\.(?:m?js)$/.test(name))
+  modules: ["index.js", ...readdirSync("dist/server", { recursive: true })
+    .filter(name => name !== "index.js" && /\.(?:m?js)$/.test(name))]
     .map(name => ({ type: "ESModule", path: path.resolve("dist/server", name) })),
   modulesRoot: path.resolve("dist/server"),
   compatibilityDate: "2026-05-15",
