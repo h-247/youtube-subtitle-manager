@@ -10,11 +10,12 @@ if (!baseUrl || !expectedRevision || !smokeUserId || !smokeUserEmail || !hostedJ
 
 const deadline = Date.now() + 10 * 60_000;
 const verificationStartedAt = Date.now();
+const serviceHeaders = { "oai-sites-authorization": `Bearer ${sitesBypassToken}` };
 const schedulerResponse = await fetch(`${baseUrl}/api/internal/jobs/run`, {
   method: "POST",
   headers: {
+    ...serviceHeaders,
     authorization: `Bearer ${hostedJobsToken}`,
-    "oai-sites-authorization": `Bearer ${sitesBypassToken}`,
     "content-type": "application/json",
   },
   body: "{}",
@@ -28,7 +29,7 @@ let health;
 let lastObservedHealth;
 while (Date.now() < deadline) {
   try {
-    const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(10_000), cache: "no-store" });
+    const response = await fetch(`${baseUrl}/api/health`, { headers: serviceHeaders, signal: AbortSignal.timeout(10_000), cache: "no-store" });
     if (response.ok) {
       const current = await response.json();
       lastObservedHealth = current;
@@ -53,10 +54,11 @@ if (!health) {
   throw new Error(`Timed out waiting for revision ${expectedRevision} and a healthy scheduler heartbeat completed after deployment verification began (no older than 15 minutes). Check the hosted jobs schedule and /api/health.${detail}`);
 }
 
-const unauthenticated = await fetch(`${baseUrl}/api/videos?page_size=1`, { signal: AbortSignal.timeout(10_000), cache: "no-store" });
+const unauthenticated = await fetch(`${baseUrl}/api/videos?page_size=1`, { headers: serviceHeaders, signal: AbortSignal.timeout(10_000), cache: "no-store" });
 if (unauthenticated.status !== 401) throw new Error(`Unauthenticated library request returned ${unauthenticated.status}, expected 401.`);
 const library = await fetch(`${baseUrl}/api/videos?page_size=1`, {
   headers: {
+    ...serviceHeaders,
     "oai-authenticated-user-id": smokeUserId,
     "oai-authenticated-user-email": smokeUserEmail,
   },
