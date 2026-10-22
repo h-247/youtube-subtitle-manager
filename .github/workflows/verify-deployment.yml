@@ -21,6 +21,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16'
+      - name: Trigger the protected hosted scheduler
+        run: |
+          test -n "$HOSTED_JOBS_TOKEN"
+          test -n "$SITES_BYPASS_TOKEN"
+          curl --fail --silent --show-error --retry 2 --retry-delay 3 \
+            -X POST "$SITE_URL/api/internal/jobs/run" \
+            -H "Authorization: Bearer $HOSTED_JOBS_TOKEN" \
+            -H "OAI-Sites-Authorization: Bearer $SITES_BYPASS_TOKEN" \
+            -H "Content-Type: application/json" --data '{}'
+        env:
+          SITE_URL: ${{ inputs.site_url }}
+          HOSTED_JOBS_TOKEN: ${{ secrets.HOSTED_JOBS_TOKEN }}
+          SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
       - name: Verify deployed revision, scheduler, and library access
         run: npm run verify:deployment
         env:

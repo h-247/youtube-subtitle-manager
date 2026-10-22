@@ -12,7 +12,7 @@ export async function GET() {
       last_error: string | null;
     }>();
   const completedAt = scheduler?.last_completed_at ? Date.parse(scheduler.last_completed_at) : NaN;
-  const fresh = Number.isFinite(completedAt) && Date.now() - completedAt <= 180_000;
+  const fresh = Number.isFinite(completedAt) && Date.now() - completedAt <= 900_000;
   const healthy = !!scheduler && fresh && scheduler.last_status === "ok";
   const schedulerHealth = scheduler ? {
     ...scheduler,

@@ -17,7 +17,7 @@ while (Date.now() < deadline) {
       const current = await response.json();
       lastObservedHealth = current;
       const heartbeatAt = Date.parse(current.scheduler?.last_completed_at || "");
-      const heartbeatIsRecent = Number.isFinite(heartbeatAt) && heartbeatAt >= verificationStartedAt && Date.now() - heartbeatAt <= 180_000;
+      const heartbeatIsRecent = Number.isFinite(heartbeatAt) && heartbeatAt >= verificationStartedAt && Date.now() - heartbeatAt <= 900_000;
       if (response.ok && current.status === "ok" && current.revision === expectedRevision
         && current.scheduler?.healthy === true && current.scheduler?.last_status === "ok" && heartbeatIsRecent) {
         health = current;
@@ -34,7 +34,7 @@ while (Date.now() < deadline) {
 if (!health) {
   const scheduler = lastObservedHealth?.scheduler;
   const detail = scheduler ? ` Last observed scheduler: status=${scheduler.last_status}, age_seconds=${scheduler.age_seconds ?? "unknown"}, error=${scheduler.health_error || scheduler.last_error || "none"}.` : " No health response was available.";
-  throw new Error(`Timed out waiting for revision ${expectedRevision} and a healthy scheduler heartbeat completed after deployment verification began (no older than 3 minutes). Check the scheduled Worker trigger and /api/health.${detail}`);
+  throw new Error(`Timed out waiting for revision ${expectedRevision} and a healthy scheduler heartbeat completed after deployment verification began (no older than 15 minutes). Check the hosted jobs schedule and /api/health.${detail}`);
 }
 
 const unauthenticated = await fetch(`${baseUrl}/api/videos?page_size=1`, { signal: AbortSignal.timeout(10_000), cache: "no-store" });

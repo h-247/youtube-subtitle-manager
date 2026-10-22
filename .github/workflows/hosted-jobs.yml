@@ -1,0 +1,36 @@
+name: Run hosted background jobs
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hosted-background-jobs
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run the protected Site job processor
+        run: |
+          test -n "$SITES_BYPASS_TOKEN"
+          health=$(curl --fail --silent --show-error \
+            -H "OAI-Sites-Authorization: Bearer $SITES_BYPASS_TOKEN" \
+            "$SITE_URL/api/health")
+          live_revision=$(printf '%s' "$health" | jq -r '.revision // empty')
+          if [ "$live_revision" != "$GITHUB_SHA" ]; then
+            echo "Skipping: live Site revision $live_revision is not source revision $GITHUB_SHA yet."
+            exit 0
+          fi
+          test -n "$HOSTED_JOBS_TOKEN"
+          curl --fail --silent --show-error --retry 2 --retry-delay 3 \
+            -X POST "$SITE_URL/api/internal/jobs/run" \
+            -H "Authorization: Bearer $HOSTED_JOBS_TOKEN" \
+            -H "OAI-Sites-Authorization: Bearer $SITES_BYPASS_TOKEN" \
+            -H "Content-Type: application/json" --data '{}'
+        env:
+          SITE_URL: https://youtube-subtitle-manager.h-247.chatgpt.site
+          HOSTED_JOBS_TOKEN: ${{ secrets.HOSTED_JOBS_TOKEN }}
+          SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
