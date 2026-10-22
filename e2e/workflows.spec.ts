@@ -21,7 +21,13 @@ test("import saves captions, completes Drive, survives reload and interrupted co
     expect(response.ok(), await response.text()).toBe(true);
   };
   await dispatch();
+  const health = await (await request.get("/api/health")).json();
+  expect(health.revision).toMatch(/^[0-9a-f]{40}$/);
+  expect(health.scheduler.last_status).toBe("ok");
+  expect(health.scheduler.last_completed_at).toBeTruthy();
+  expect((await request.get("/api/videos")).status()).toBe(401);
   const library = async () => (await (await request.get("/api/videos", {headers: identity("workflow-user")})).json()).items;
+  expect((await request.get("/api/videos", {headers: identity("workflow-user")})).ok()).toBe(true);
   await expect.poll(async () => (await library())[0]?.drive_file_id).toBeTruthy();
   const video = (await library())[0];
   expect(video.status).toBe("COMPLETED");

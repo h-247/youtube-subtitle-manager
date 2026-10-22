@@ -1,0 +1,30 @@
+name: Verify deployed Site release
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: Deployed Site URL
+        required: true
+        type: string
+      expected_revision:
+        description: Exact commit SHA from the site-release artifact
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16'
+      - name: Verify deployed revision, scheduler, and library access
+        run: npm run verify:deployment
+        env:
+          SITE_URL: ${{ inputs.site_url }}
+          EXPECTED_SITE_REVISION: ${{ inputs.expected_revision }}
+          SITE_SMOKE_USER_ID: ${{ secrets.SITE_SMOKE_USER_ID }}
+          SITE_SMOKE_USER_EMAIL: ${{ secrets.SITE_SMOKE_USER_EMAIL }}

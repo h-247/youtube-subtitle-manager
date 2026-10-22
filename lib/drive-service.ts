@@ -164,12 +164,15 @@ export async function disconnectDrive(userId: string) {
 export async function syncOnePendingSubtitle(userId: string) {
   if (!configured()) return null;
   const db = database();
+  const nowMs = Date.now();
   const connection = await db.prepare("SELECT 1 AS connected FROM drive_connections WHERE user_id = ?")
     .bind(userId).first<{ connected: number }>();
   if (!connection) return null;
   const row = await db.prepare(`SELECT id, video_id, title, subtitle_text, drive_retry_count, drive_last_attempt_at
     FROM videos WHERE user_id = ? AND status = 'COMPLETED' AND processing_paused = 0 AND drive_file_id IS NULL AND subtitle_text IS NOT NULL
-    ORDER BY coalesce(drive_last_attempt_at, '') ASC, created_at ASC LIMIT 1`).bind(userId).first<{
+    AND (drive_last_attempt_at IS NULL OR datetime(drive_last_attempt_at, printf('+%d seconds',
+      CASE WHEN drive_retry_count <= 1 THEN 2 ELSE min(60, 2 * (1 << min(drive_retry_count - 1, 5))) END)) <= datetime(?, 'unixepoch'))
+    ORDER BY coalesce(drive_last_attempt_at, '') ASC, created_at ASC LIMIT 1`).bind(userId, nowMs).first<{
       id: number; video_id: string; title: string; subtitle_text: string; drive_retry_count: number; drive_last_attempt_at: string | null;
     }>();
   if (!row) return null;
@@ -178,7 +181,7 @@ export async function syncOnePendingSubtitle(userId: string) {
   const last = row.drive_last_attempt_at ? Date.parse(row.drive_last_attempt_at) : 0;
   const delayMs = retryCount === 0 ? 0 : Math.min(60_000, 2_000 * 2 ** Math.min(retryCount - 1, 5));
   if (Date.now() - last < delayMs) return null;
-  const now = new Date().toISOString();
+  const now = new Date(nowMs).toISOString();
   const claim = await db.prepare(`UPDATE videos SET drive_last_attempt_at = ?, drive_retry_count = drive_retry_count + 1, updated_at = ?
     WHERE id = ? AND user_id = ? AND status = 'COMPLETED' AND processing_paused = 0 AND drive_file_id IS NULL
     AND drive_retry_count = ? AND (drive_last_attempt_at IS NULL OR drive_last_attempt_at <= ?)`).bind(now, now, row.id, userId, retryCount, new Date(Date.now() - delayMs).toISOString()).run();

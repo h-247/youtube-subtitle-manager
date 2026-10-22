@@ -114,3 +114,41 @@ export const playlistCleanupJobs = sqliteTable("playlist_cleanup_jobs", {
   error: text("error"),
   updatedAt: text("updated_at").notNull(),
 }, t => [uniqueIndex("uq_playlist_cleanup_item").on(t.userId, t.playlistItemId), index("ix_playlist_cleanup_due").on(t.userId, t.state, t.nextAttempt)]);
+
+export const playlistImports = sqliteTable("playlist_imports", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  playlistId: text("playlist_id").notNull(),
+  title: text("title").notNull(),
+  totalItems: integer("total_items").notNull(),
+  completedItems: integer("completed_items").notNull().default(0),
+  state: text("state").notNull().default("PENDING"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, t => [index("ix_playlist_imports_user_state").on(t.userId, t.state)]);
+
+export const playlistImportItems = sqliteTable("playlist_import_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  importId: text("import_id").notNull(),
+  userId: text("user_id").notNull(),
+  videoId: text("video_id").notNull(),
+  title: text("title").notNull(),
+  channelTitle: text("channel_title"),
+  channelUrl: text("channel_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  duration: integer("duration"),
+  playlistId: text("playlist_id").notNull(),
+  playlistItemId: text("playlist_item_id").notNull(),
+  tagsJson: text("tags_json").notNull(),
+  state: text("state").notNull().default("PENDING"),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+}, t => [uniqueIndex("uq_playlist_import_item").on(t.importId, t.videoId, t.playlistItemId), index("ix_playlist_import_items_due").on(t.userId, t.state, t.leaseUntil, t.id)]);
+
+export const hostedSchedulerState = sqliteTable("hosted_scheduler_state", {
+  id: integer("id").primaryKey(),
+  lastStartedAt: text("last_started_at"),
+  lastCompletedAt: text("last_completed_at"),
+  lastStatus: text("last_status").notNull().default("never_run"),
+  lastError: text("last_error"),
+});

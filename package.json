@@ -9,6 +9,8 @@
     "install:ci": "node scripts/install-ci.mjs",
     "dev": "node scripts/run-framework.mjs dev",
     "build": "node scripts/run-framework.mjs build",
+    "prepare:release": "node scripts/write-release-manifest.mjs",
+    "verify:deployment": "node scripts/verify-deployment.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",

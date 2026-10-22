@@ -1,5 +1,8 @@
+declare const __SITE_REVISION__: string;
+
 declare namespace Cloudflare {
   interface Env {
+    SITE_REVISION?: string;
     DB?: D1Database;
     HOSTED_JOBS_TOKEN?: string;
     BUCKET?: R2Bucket;

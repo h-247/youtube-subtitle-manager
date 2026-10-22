@@ -1,4 +1,4 @@
-import { readManagedPlaylist, enqueuePlaylistRemoval } from "../../../lib/youtube-playlists";
+import { readManagedPlaylist } from "../../../lib/youtube-playlists";
 import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, type LibraryVideo } from "../../../lib/server-api";
 
 const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at, tags_json, processing_paused, error_category";
@@ -74,7 +74,28 @@ export async function POST(request: Request) {
     }
   } catch (error) { return errorResponse(error instanceof Error ? error.message : "Could not read YouTube content.", 422); }
   if (!source.length) return errorResponse("No accessible videos were found in this playlist.");
-  const db = database(); const results = []; let processed = 0; let skipped = 0;
+  const db = database();
+  if (mode === "playlist") {
+    const playlistId = url.searchParams.get("list")!;
+    if (source.some(item => !item.playlist_item_id)) return errorResponse("YouTube returned an incomplete playlist. Retry before importing.", 422);
+    const importId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const statements = [db.prepare(`INSERT INTO playlist_imports
+      (id, user_id, playlist_id, title, total_items, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(importId, user.userId, playlistId, incoming[0] || "Playlist", source.length, now, now)];
+    for (const item of source) statements.push(db.prepare(`INSERT INTO playlist_import_items
+      (import_id, user_id, video_id, title, channel_title, channel_url, thumbnail_url, duration,
+       playlist_id, playlist_item_id, tags_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(importId, user.userId, item.video_id, item.title, item.channel_title, item.channel_url,
+        item.thumbnail_url, item.duration, playlistId, item.playlist_item_id, JSON.stringify(incoming), now));
+    await db.batch(statements);
+    return json({ import_id: importId, total_found: source.length, processed: source.length,
+      skipped_duplicates: 0, failed: 0, results: source.map(item => ({ video_id: item.video_id,
+        title: item.title, status: "PROCESSING", subtitle_type: "NONE", is_duplicate: false, video: null })) }, 202);
+  }
+  const results = []; let processed = 0; let skipped = 0;
   for (const item of source) {
     const current = await db.prepare("SELECT * FROM videos WHERE user_id = ? AND video_id = ?").bind(user.userId, item.video_id).first<LibraryVideo>();
     const previous = current ? videoFromRow(current as unknown as Record<string, unknown>).tags || [] : [];
@@ -92,7 +113,6 @@ export async function POST(request: Request) {
         .bind(user.userId, item.video_id, videoUrl, item.title, item.channel_title, item.channel_url, item.thumbnail_url || `https://i.ytimg.com/vi/${item.video_id}/hqdefault.jpg`, item.duration, JSON.stringify(tags), tags.join(", ") || null, now, now).run();
       processed++;
     }
-    if (mode === "playlist" && item.playlist_item_id) await enqueuePlaylistRemoval(user.userId,item.video_id,[{playlist_id:url.searchParams.get("list"),playlist_item_id:item.playlist_item_id}]);
     const row = await db.prepare("SELECT * FROM videos WHERE user_id = ? AND video_id = ?").bind(user.userId, item.video_id).first<LibraryVideo>();
     results.push({ video_id: item.video_id, title: item.title, status: row?.status, subtitle_type: row?.subtitle_type, is_duplicate: !!current && (current.status === "COMPLETED" || current.status === "PROCESSING"), video: row ? videoFromRow(row as unknown as Record<string, unknown>) : null });
   }
