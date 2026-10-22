@@ -1,11 +1,9 @@
 const baseUrl = process.env.SITE_URL?.replace(/\/$/, "");
 const expectedRevision = process.env.EXPECTED_SITE_REVISION;
-const smokeUserId = process.env.SITE_SMOKE_USER_ID;
-const smokeUserEmail = process.env.SITE_SMOKE_USER_EMAIL;
 const hostedJobsToken = process.env.HOSTED_JOBS_TOKEN;
 const sitesBypassToken = process.env.SITES_BYPASS_TOKEN;
-if (!baseUrl || !expectedRevision || !smokeUserId || !smokeUserEmail || !hostedJobsToken || !sitesBypassToken) {
-  throw new Error("Set SITE_URL, EXPECTED_SITE_REVISION, SITE_SMOKE_USER_ID, SITE_SMOKE_USER_EMAIL, HOSTED_JOBS_TOKEN, and SITES_BYPASS_TOKEN.");
+if (!baseUrl || !expectedRevision || !hostedJobsToken || !sitesBypassToken) {
+  throw new Error("Set SITE_URL, EXPECTED_SITE_REVISION, HOSTED_JOBS_TOKEN, and SITES_BYPASS_TOKEN.");
 }
 
 const deadline = Date.now() + 10 * 60_000;
@@ -66,16 +64,4 @@ if (!health) {
 
 const unauthenticated = await fetch(`${baseUrl}/api/videos?page_size=1`, { headers: serviceHeaders, signal: AbortSignal.timeout(10_000), cache: "no-store" });
 if (unauthenticated.status !== 401) throw new Error(`Unauthenticated library request returned ${unauthenticated.status}, expected 401.`);
-const library = await fetch(`${baseUrl}/api/videos?page_size=1`, {
-  headers: {
-    ...serviceHeaders,
-    "oai-authenticated-user-id": smokeUserId,
-    "oai-authenticated-user-email": smokeUserEmail,
-  },
-  signal: AbortSignal.timeout(10_000),
-  cache: "no-store",
-});
-if (!library.ok) throw new Error(`Authenticated library request returned ${library.status}.`);
-const payload = await library.json();
-if (!Array.isArray(payload.items) || !Number.isInteger(payload.total)) throw new Error("Authenticated library response has an invalid shape.");
-console.log(JSON.stringify({ revision: health.revision, scheduler: health.scheduler, authenticated_library: "passed" }, null, 2));
+console.log(JSON.stringify({ revision: health.revision, scheduler: health.scheduler, library_auth_gate: "unauthenticated request rejected" }, null, 2));

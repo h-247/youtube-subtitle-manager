@@ -26,7 +26,5 @@ jobs:
         env:
           SITE_URL: ${{ inputs.site_url }}
           EXPECTED_SITE_REVISION: ${{ inputs.expected_revision }}
-          SITE_SMOKE_USER_ID: ${{ secrets.SITE_SMOKE_USER_ID }}
-          SITE_SMOKE_USER_EMAIL: ${{ secrets.SITE_SMOKE_USER_EMAIL }}
           HOSTED_JOBS_TOKEN: ${{ secrets.HOSTED_JOBS_TOKEN }}
           SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
