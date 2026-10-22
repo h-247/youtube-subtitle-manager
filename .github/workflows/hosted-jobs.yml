@@ -16,10 +16,14 @@ jobs:
       - name: Run the protected Site job processor
         run: |
           test -n "$SITES_BYPASS_TOKEN"
-          health=$(curl --fail --silent --show-error \
+          health=$(curl --silent --show-error \
             -H "OAI-Sites-Authorization: Bearer $SITES_BYPASS_TOKEN" \
             "$SITE_URL/api/health")
           live_revision=$(printf '%s' "$health" | jq -r '.revision // empty')
+          if [ -z "$live_revision" ]; then
+            echo "Could not read the deployed Site revision from /api/health."
+            exit 1
+          fi
           if [ "$live_revision" != "$GITHUB_SHA" ]; then
             echo "Skipping: live Site revision $live_revision is not source revision $GITHUB_SHA yet."
             exit 0
