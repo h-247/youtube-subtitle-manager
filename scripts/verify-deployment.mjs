@@ -11,6 +11,16 @@ if (!baseUrl || !expectedRevision || !smokeUserId || !smokeUserEmail || !hostedJ
 const deadline = Date.now() + 10 * 60_000;
 const verificationStartedAt = Date.now();
 const serviceHeaders = { "oai-sites-authorization": `Bearer ${sitesBypassToken}` };
+const migrationResponse = await fetch(`${baseUrl}/api/internal/migrations/apply`, {
+  method: "POST",
+  headers: { ...serviceHeaders, authorization: `Bearer ${hostedJobsToken}` },
+  body: "{}",
+  signal: AbortSignal.timeout(10_000),
+  cache: "no-store",
+});
+if (!migrationResponse.ok) throw new Error(`Protected hosted migration returned ${migrationResponse.status}.`);
+const migrationResult = await migrationResponse.json();
+if (migrationResult.complete !== true) throw new Error("Protected hosted migration did not report completion.");
 const schedulerResponse = await fetch(`${baseUrl}/api/internal/jobs/run`, {
   method: "POST",
   headers: {

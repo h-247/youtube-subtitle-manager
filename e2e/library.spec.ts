@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("background dispatch runs without a dashboard and requires authorization", async ({ request }) => {
+  const migrationDenied = await request.post("/api/internal/migrations/apply");
+  expect(migrationDenied.status()).toBe(401);
+  const migrated = await request.post("/api/internal/migrations/apply", { headers: { Authorization: "Bearer browser-test" } });
+  expect(migrated.ok(), await migrated.text()).toBe(true);
+  expect((await migrated.json()).complete).toBe(true);
   const denied = await request.post("/api/internal/jobs/run");
   expect(denied.status()).toBe(401);
   const dispatched = await request.post("/api/internal/jobs/run", { headers: { Authorization: "Bearer browser-test" } });
