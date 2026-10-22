@@ -3,9 +3,16 @@ CREATE TABLE playlist_imports (
   user_id TEXT NOT NULL,
   playlist_id TEXT NOT NULL,
   title TEXT NOT NULL,
+  tags_json TEXT NOT NULL DEFAULT '[]',
   total_items INTEGER NOT NULL,
   completed_items INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL DEFAULT 'PENDING',
+  state TEXT NOT NULL DEFAULT 'DISCOVERING',
+  next_page_token TEXT,
+  discovery_complete INTEGER NOT NULL DEFAULT 0,
+  discovery_attempts INTEGER NOT NULL DEFAULT 0,
+  discovery_next_attempt INTEGER NOT NULL DEFAULT 0,
+  discovery_lease_until INTEGER NOT NULL DEFAULT 0,
+  discovery_error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -27,6 +34,8 @@ CREATE TABLE playlist_import_items (
   tags_json TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'PENDING',
   lease_until INTEGER NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
   created_at TEXT NOT NULL
 );
 --> statement-breakpoint

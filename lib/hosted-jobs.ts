@@ -1,7 +1,7 @@
 import { database, retryVideo } from "./server-api";
 import { syncOnePendingSubtitle } from "./drive-service";
 import { processOnePlaylistRemoval } from "./youtube-playlists";
-import { processOnePlaylistImport } from "./playlist-imports";
+import { processOnePlaylistDiscovery, processPlaylistImportBatch } from "./playlist-imports";
 import { withinJobDeadline } from "./job-context";
 
 const dueVideo = `v.status = 'PROCESSING' AND v.processing_source <> 'LOCAL' AND v.processing_paused = 0
@@ -27,9 +27,12 @@ export async function runHostedJobs() {
   await db.prepare("UPDATE hosted_scheduler_state SET last_started_at = ?, last_status = 'running', last_error = NULL WHERE id = 1")
     .bind(startedAt).run();
   try {
+    const failures: string[] = [];
     const now = Date.now();
+    const nowSeconds = Math.floor(now / 1000);
     const users = await db.prepare(`WITH pending AS (
         SELECT user_id FROM playlist_import_items WHERE state = 'PENDING' OR (state = 'PROCESSING' AND lease_until <= ?)
+        UNION SELECT user_id FROM playlist_imports WHERE state = 'DISCOVERING' AND discovery_next_attempt <= ? AND discovery_lease_until <= ?
         UNION SELECT v.user_id FROM videos v WHERE ${dueVideo}
         UNION SELECT v.user_id FROM videos v JOIN drive_connections dc ON dc.user_id = v.user_id WHERE ${dueDriveVideo}
         UNION SELECT pending.user_id FROM (
@@ -39,7 +42,7 @@ export async function runHostedJobs() {
       SELECT pending.user_id FROM pending LEFT JOIN hosted_job_leases lease ON lease.user_id = pending.user_id
       WHERE coalesce(lease.lease_until, 0) <= ?
       ORDER BY coalesce(lease.last_run, 0), pending.user_id LIMIT 4`)
-      .bind(now, now, now, now, now, now).all<{ user_id: string }>();
+      .bind(now, now, now, nowSeconds, nowSeconds, now, now, now).all<{ user_id: string }>();
     for (const { user_id: userId } of users.results ?? []) {
       const owner = crypto.randomUUID();
       const claimAt = Date.now();
@@ -50,23 +53,26 @@ export async function runHostedJobs() {
       try {
         const due = await db.prepare(`SELECT id FROM videos v WHERE v.user_id = ? AND ${dueVideo}
           ORDER BY coalesce(v.last_attempt_at, ''), v.id LIMIT 1`)
-          .bind(userId, Date.now()).first<{ id: number }>();
+          .bind(userId, Math.floor(Date.now() / 1000)).first<{ id: number }>();
         await withinJobDeadline(async () => {
-          await processOnePlaylistImport(userId);
+          await processOnePlaylistDiscovery(userId);
+          await processPlaylistImportBatch(userId, 10);
           if (due) await retryVideo(due.id, userId);
           await syncOnePendingSubtitle(userId);
           await processOnePlaylistRemoval(userId);
         });
       } catch (error) {
-        console.error("Hosted job failed", userId, error instanceof Error ? error.message : "Unknown failure");
+        const message = error instanceof Error ? error.message : "Unknown failure";
+        failures.push(`${userId}: ${message.slice(0, 300)}`);
+        console.error("Hosted job failed", userId, message);
       } finally {
         await db.prepare("UPDATE hosted_job_leases SET lease_until = 0, last_run = ? WHERE user_id = ? AND owner = ?")
           .bind(Date.now(), userId, owner).run();
       }
     }
     const completedAt = new Date().toISOString();
-    await db.prepare("UPDATE hosted_scheduler_state SET last_completed_at = ?, last_status = 'ok', last_error = NULL WHERE id = 1")
-      .bind(completedAt).run();
+    await db.prepare(`UPDATE hosted_scheduler_state SET last_completed_at = ?, last_status = ?, last_error = ? WHERE id = 1`)
+      .bind(completedAt, failures.length ? "partial_failure" : "ok", failures.length ? failures.join(" | ").slice(0, 1000) : null).run();
   } catch (error) {
     const failedAt = new Date().toISOString();
     await db.prepare("UPDATE hosted_scheduler_state SET last_completed_at = ?, last_status = 'error', last_error = ? WHERE id = 1")

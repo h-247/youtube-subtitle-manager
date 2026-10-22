@@ -90,6 +90,32 @@ export async function readManagedPlaylist(userId: string, playlistId: string) {
   } while (token);
   return {title: playlist.snippet.title, videos};
 }
+export async function readManagedPlaylistPage(userId: string, playlistId: string, pageToken: string | null) {
+  if (!/^[\w-]{2,150}$/.test(playlistId)) throw new Error("Invalid playlist ID.");
+  let title: string | null = null;
+  if (!pageToken) {
+    const [playlistResponse, channelResponse] = await Promise.all([
+      youtubeRequest(userId, "playlists", {part: "snippet", id: playlistId}),
+      youtubeRequest(userId, "channels", {part: "id,snippet", mine: "true", maxResults: "50"}),
+    ]);
+    const playlist = (await playlistResponse.json() as {items?: Array<{snippet: {title: string; channelId: string}}>}).items?.[0];
+    const channels = (await channelResponse.json() as {items?: Array<{id: string; snippet?: {title?: string}}>}).items || [];
+    if (!playlist) throw new YouTubeError("INVALID_REQUEST", "The playlist was not found or is unavailable to the connected YouTube channel.");
+    if (!channels.some(c => c.id === playlist.snippet.channelId)) throw new YouTubeError("PERMISSION", `The connected YouTube channel (${channels.map(c => c.snippet?.title || c.id).join(", ") || "no channel"}) does not own this playlist. Reconnect YouTube and select the playlist owner's channel or Brand Account.`);
+    title = playlist.snippet.title;
+  }
+  const response = await youtubeRequest(userId, "playlistItems", {part: "snippet,contentDetails", playlistId, maxResults: "50", ...(pageToken ? {pageToken} : {})});
+  const page = await response.json() as {items?: Array<any>; nextPageToken?: string};
+  const videos = (page.items || []).flatMap(item => {
+    const snippet = item.snippet; const videoId = item.contentDetails?.videoId || snippet?.resourceId?.videoId;
+    if (!item.id || !/^[\w-]{11}$/.test(videoId || "") || ["Private video", "Deleted video"].includes(snippet?.title)) return [];
+    return [{video_id: videoId, playlist_item_id: item.id, title: snippet.title || videoId,
+      channel_title: snippet.videoOwnerChannelTitle || null,
+      channel_url: snippet.videoOwnerChannelId ? `https://www.youtube.com/channel/${snippet.videoOwnerChannelId}` : null,
+      thumbnail_url: snippet.thumbnails?.high?.url || null, duration: null as number | null}];
+  });
+  return {title, videos, nextPageToken: page.nextPageToken || null};
+}
 export async function enqueuePlaylistRemoval(userId: string, videoId: string, items: unknown) {
   if (!Array.isArray(items)) return;
   const db = database();

@@ -120,9 +120,16 @@ export const playlistImports = sqliteTable("playlist_imports", {
   userId: text("user_id").notNull(),
   playlistId: text("playlist_id").notNull(),
   title: text("title").notNull(),
+  tagsJson: text("tags_json").notNull().default("[]"),
   totalItems: integer("total_items").notNull(),
   completedItems: integer("completed_items").notNull().default(0),
-  state: text("state").notNull().default("PENDING"),
+  state: text("state").notNull().default("DISCOVERING"),
+  nextPageToken: text("next_page_token"),
+  discoveryComplete: integer("discovery_complete").notNull().default(0),
+  discoveryAttempts: integer("discovery_attempts").notNull().default(0),
+  discoveryNextAttempt: integer("discovery_next_attempt").notNull().default(0),
+  discoveryLeaseUntil: integer("discovery_lease_until").notNull().default(0),
+  discoveryError: text("discovery_error"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, t => [index("ix_playlist_imports_user_state").on(t.userId, t.state)]);
@@ -142,6 +149,8 @@ export const playlistImportItems = sqliteTable("playlist_import_items", {
   tagsJson: text("tags_json").notNull(),
   state: text("state").notNull().default("PENDING"),
   leaseUntil: integer("lease_until").notNull().default(0),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
   createdAt: text("created_at").notNull(),
 }, t => [uniqueIndex("uq_playlist_import_item").on(t.importId, t.videoId, t.playlistItemId), index("ix_playlist_import_items_due").on(t.userId, t.state, t.leaseUntil, t.id)]);
 

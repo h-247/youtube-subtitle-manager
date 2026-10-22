@@ -1,4 +1,3 @@
-import { readManagedPlaylist } from "../../../lib/youtube-playlists";
 import { currentSiteUser, database, errorResponse, json, videoFromRow, youtubeFetch, type LibraryVideo } from "../../../lib/server-api";
 
 const VIDEO_FIELDS = "id, user_id, video_id, youtube_url, title, channel_title, channel_url, duration, thumbnail_url, status, watch_status, channel_tags, subtitle_type, subtitle_language, drive_file_id, drive_file_url, chatgpt_link, retry_count, progress_message, error_message, created_at, updated_at, subtitle_text, last_attempt_at, tags_json, processing_paused, error_category";
@@ -54,47 +53,32 @@ export async function POST(request: Request) {
   const mode = body.mode || (url.searchParams.get("list") ? "playlist" : "video");
   if (!["video", "playlist"].includes(mode)) return errorResponse("Choose Single video or YouTube playlist.");
   if (body.tags !== undefined && (!Array.isArray(body.tags) || !body.tags.every(t => typeof t === "string"))) return errorResponse("Video tags must be a list of names.");
-  let incoming = Array.isArray(body.tags) ? [...new Set((body.tags as string[]).map(t => t.trim().replace(/^#/, "")).filter(Boolean))] : [];
-  let source: Array<{video_id: string; title: string; channel_title: string | null; channel_url: string | null; thumbnail_url: string | null; duration: number | null; playlist_item_id?: string}>;
-  try {
-    if (mode === "playlist") {
-      const id = url.searchParams.get("list");
-      if (!id) return errorResponse("Playlist mode requires a YouTube playlist URL.");
-      const playlist = await readManagedPlaylist(user.userId, id);
-      incoming = [playlist.title]; source = playlist.videos;
-    } else {
-      if (url.pathname === "/playlist") return errorResponse("Choose YouTube playlist to import a playlist.");
-      url.searchParams.delete("list");
-      const id = videoIdsFromUrl(url.toString())[0];
-      if (!id) return errorResponse("Enter a valid video or Short URL.");
-      const response = await youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`, {signal: AbortSignal.timeout(12000)});
-      if (!response.ok) return errorResponse("YouTube video is unavailable or private.");
-      const meta = await response.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
-      source = [{video_id: id, title: meta.title || id, channel_title: meta.author_name || null, channel_url: meta.author_url || null, thumbnail_url: meta.thumbnail_url || null, duration: null}];
-    }
-  } catch (error) { return errorResponse(error instanceof Error ? error.message : "Could not read YouTube content.", 422); }
-  if (!source.length) return errorResponse("No accessible videos were found in this playlist.");
-  const db = database();
+  const incoming = Array.isArray(body.tags) ? [...new Set((body.tags as string[]).map(t => t.trim().replace(/^#/, "")).filter(Boolean))] : [];
   if (mode === "playlist") {
-    const playlistId = url.searchParams.get("list")!;
-    if (source.some(item => !item.playlist_item_id)) return errorResponse("YouTube returned an incomplete playlist. Retry before importing.", 422);
+    const playlistId = url.searchParams.get("list");
+    if (!playlistId) return errorResponse("Playlist mode requires a YouTube playlist URL.");
+    if (!/^[\w-]{2,150}$/.test(playlistId)) return errorResponse("Invalid playlist ID.");
     const importId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const statements = [db.prepare(`INSERT INTO playlist_imports
-      (id, user_id, playlist_id, title, total_items, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(importId, user.userId, playlistId, incoming[0] || "Playlist", source.length, now, now)];
-    for (const item of source) statements.push(db.prepare(`INSERT INTO playlist_import_items
-      (import_id, user_id, video_id, title, channel_title, channel_url, thumbnail_url, duration,
-       playlist_id, playlist_item_id, tags_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(importId, user.userId, item.video_id, item.title, item.channel_title, item.channel_url,
-        item.thumbnail_url, item.duration, playlistId, item.playlist_item_id, JSON.stringify(incoming), now));
-    await db.batch(statements);
-    return json({ import_id: importId, total_found: source.length, processed: source.length,
-      skipped_duplicates: 0, failed: 0, results: source.map(item => ({ video_id: item.video_id,
-        title: item.title, status: "PROCESSING", subtitle_type: "NONE", is_duplicate: false, video: null })) }, 202);
+    await database().prepare(`INSERT INTO playlist_imports
+      (id, user_id, playlist_id, title, tags_json, total_items, state, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, 'DISCOVERING', ?, ?)`)
+      .bind(importId, user.userId, playlistId, playlistId, JSON.stringify(incoming), now, now).run();
+    return json({ import_id: importId, total_found: 0, queued: 0, processed: 0,
+      skipped_duplicates: 0, failed: 0, state: "DISCOVERING", results: [] }, 202);
   }
+  let source: Array<{video_id: string; title: string; channel_title: string | null; channel_url: string | null; thumbnail_url: string | null; duration: number | null; playlist_item_id?: string}>;
+  try {
+    if (url.pathname === "/playlist") return errorResponse("Choose YouTube playlist to import a playlist.");
+    url.searchParams.delete("list");
+    const id = videoIdsFromUrl(url.toString())[0];
+    if (!id) return errorResponse("Enter a valid video or Short URL.");
+    const response = await youtubeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`, {signal: AbortSignal.timeout(12000)});
+    if (!response.ok) return errorResponse("YouTube video is unavailable or private.");
+    const meta = await response.json() as { title?: string; author_name?: string; author_url?: string; thumbnail_url?: string };
+    source = [{video_id: id, title: meta.title || id, channel_title: meta.author_name || null, channel_url: meta.author_url || null, thumbnail_url: meta.thumbnail_url || null, duration: null}];
+  } catch (error) { return errorResponse(error instanceof Error ? error.message : "Could not read YouTube content.", 422); }
+  const db = database();
   const results = []; let processed = 0; let skipped = 0;
   for (const item of source) {
     const current = await db.prepare("SELECT * FROM videos WHERE user_id = ? AND video_id = ?").bind(user.userId, item.video_id).first<LibraryVideo>();

@@ -1,4 +1,4 @@
-import { YouTubeStatus, VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem } from "../types";
+import { YouTubeStatus, VideoIngestInput, User, Video, VideoIngestResponse, VideoListResponse, VideoStatus, WatchStatus, DriveStatus, ChannelItem, PlaylistImportProgress } from "../types";
 
 const API_BASE = "/api";
 
@@ -69,6 +69,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify(input),
       });
+    },
+
+    async playlistImports(): Promise<PlaylistImportProgress[]> {
+      const result = await request<{ imports: PlaylistImportProgress[] }>("/videos/imports");
+      return result.imports;
+    },
+
+    async retryPlaylistImport(importId: string): Promise<void> {
+      await request(`/videos/imports`, { method: "POST", body: JSON.stringify({ import_id: importId }) });
     },
 
     async list(params: {

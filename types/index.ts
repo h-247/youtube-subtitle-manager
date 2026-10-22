@@ -54,11 +54,26 @@ export interface VideoIngestResultItem {
 }
 
 export interface VideoIngestResponse {
+  import_id?: string;
+  queued?: number;
   total_found: number;
   processed: number;
   skipped_duplicates: number;
   failed: number;
   results: VideoIngestResultItem[];
+}
+
+export interface PlaylistImportProgress {
+  id: string;
+  playlist_id: string;
+  title: string;
+  total_items: number;
+  completed_items: number;
+  queued_items: number;
+  failed_items: number;
+  state: "DISCOVERING" | "PENDING" | "COMPLETED" | "FAILED";
+  discovery_error?: string | null;
+  failures: Array<{ video_id: string; title: string; error: string }>;
 }
 
 export interface VideoListResponse {

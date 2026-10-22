@@ -3,9 +3,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { beforeEach, expect, test, vi } from "vitest";
 import { env } from "./worker-env";
 
-const context = vi.hoisted(() => ({ db: null as unknown as D1Database, retry: vi.fn() }));
+const context = vi.hoisted(() => ({ db: null as unknown as D1Database, retry: vi.fn(), readPage: vi.fn() }));
 vi.mock("../lib/server-api", () => ({ database: () => context.db, retryVideo: context.retry }));
-vi.mock("../lib/youtube-playlists", () => ({ processOnePlaylistRemoval: vi.fn() }));
+vi.mock("../lib/youtube-playlists", () => ({ processOnePlaylistRemoval: vi.fn(), readManagedPlaylistPage: context.readPage }));
 import { encryptTokens, syncOnePendingSubtitle, uploadSubtitle } from "../lib/drive-service";
 import { runHostedJobs } from "../lib/hosted-jobs";
 import { processOnePlaylistImport } from "../lib/playlist-imports";
@@ -18,6 +18,7 @@ let failConfirmation: boolean;
 beforeEach(async () => {
   vi.restoreAllMocks();
   context.retry.mockReset();
+  context.readPage.mockReset();
   sqlite = new DatabaseSync(":memory:");
   for (const file of readdirSync("drizzle").filter(name => name.endsWith(".sql")).sort()) sqlite.exec(readFileSync(`drizzle/${file}`, "utf8"));
   context.db = {
@@ -73,6 +74,15 @@ test("timeout and restart reconcile one file using stored captions", async () =>
   expect(sqlite.prepare("SELECT drive_file_id, drive_file_url FROM videos").get()).toEqual({ drive_file_id: "reserved-1", drive_file_url: "https://drive.google.com/file/d/reserved-1/view" });
 });
 
+test("previously attempted Drive uploads become eligible after backoff", async () => {
+  sqlite.prepare("UPDATE videos SET drive_retry_count = 1, drive_last_attempt_at = ? WHERE user_id = 'user'")
+    .run(new Date(Date.now() - 20_000).toISOString());
+  await syncOnePendingSubtitle("user");
+  expect(files.size).toBe(1);
+  expect(sqlite.prepare("SELECT drive_file_id, drive_retry_count FROM videos WHERE user_id = 'user'").get())
+    .toMatchObject({ drive_file_id: "reserved-1", drive_retry_count: 2 });
+});
+
 test("database confirmation loss reuses the reserved file", async () => {
   failConfirmation = true;
   await syncOnePendingSubtitle("user");
@@ -100,6 +110,22 @@ test("overlapping workers claim exclusively; expired claims recover", async () =
   sqlite.exec("UPDATE hosted_job_leases SET owner = 'crashed', lease_until = 0");
   await runHostedJobs();
   expect(context.retry).toHaveBeenCalledTimes(2);
+});
+
+test("scheduler health retains per-user processing failures", async () => {
+  sqlite.exec("INSERT INTO videos (user_id, video_id, youtube_url, title, status) VALUES ('broken-user','broken00001','https://youtube.com','Broken','PROCESSING')");
+  context.retry.mockRejectedValueOnce(new Error("fixture download failure"));
+  await runHostedJobs();
+  expect(sqlite.prepare("SELECT last_status, last_error FROM hosted_scheduler_state WHERE id = 1").get())
+    .toEqual({ last_status: "partial_failure", last_error: "broken-user: fixture download failure" });
+});
+
+test("previously attempted caption jobs become eligible after backoff", async () => {
+  sqlite.prepare(`INSERT INTO videos (user_id, video_id, youtube_url, title, status, retry_count, last_attempt_at)
+    VALUES ('retried-caption', 'caption0001', 'https://youtube.com', 'Retried caption', 'PROCESSING', 4, ?)`)
+    .run(new Date(Date.now() - 120_000).toISOString());
+  await runHostedJobs();
+  expect(context.retry).toHaveBeenCalledWith(expect.any(Number), "retried-caption");
 });
 
 test("scheduler only picks due work with prerequisites and rotates fairly across users", async () => {
@@ -143,8 +169,8 @@ test("scheduler only picks due work with prerequisites and rotates fairly across
 
 test("durable playlist items resume and repeated submissions preserve tags and cleanup jobs", async () => {
   const now = new Date().toISOString();
-  sqlite.prepare(`INSERT INTO playlist_imports (id, user_id, playlist_id, title, total_items, created_at, updated_at)
-    VALUES ('import-a', 'user', 'playlist-a', 'Playlist', 1, ?, ?)`).run(now, now);
+  sqlite.prepare(`INSERT INTO playlist_imports (id, user_id, playlist_id, title, total_items, state, discovery_complete, created_at, updated_at)
+    VALUES ('import-a', 'user', 'playlist-a', 'Playlist', 1, 'PENDING', 1, ?, ?)`).run(now, now);
   sqlite.prepare(`INSERT INTO playlist_import_items
     (import_id, user_id, video_id, title, playlist_id, playlist_item_id, tags_json, created_at)
     VALUES ('import-a', 'user', 'abcdefghijk', 'Imported', 'playlist-a', 'item-a', '["Playlist"]', ?)` ).run(now);
@@ -156,8 +182,8 @@ test("durable playlist items resume and repeated submissions preserve tags and c
 
   sqlite.prepare(`INSERT INTO videos (user_id, video_id, youtube_url, title, status, tags_json, channel_tags)
     VALUES ('user', 'zyxwvutsrqp', 'https://youtube.com/watch?v=zyxwvutsrqp', 'Existing', 'COMPLETED', '["Keep"]', 'Keep')`).run();
-  sqlite.prepare(`INSERT INTO playlist_imports (id, user_id, playlist_id, title, total_items, created_at, updated_at)
-    VALUES ('import-b', 'user', 'playlist-a', 'Playlist', 1, ?, ?)`).run(now, now);
+  sqlite.prepare(`INSERT INTO playlist_imports (id, user_id, playlist_id, title, total_items, state, discovery_complete, created_at, updated_at)
+    VALUES ('import-b', 'user', 'playlist-a', 'Playlist', 1, 'PENDING', 1, ?, ?)`).run(now, now);
   sqlite.prepare(`INSERT INTO playlist_import_items
     (import_id, user_id, video_id, title, playlist_id, playlist_item_id, tags_json, created_at)
     VALUES ('import-b', 'user', 'zyxwvutsrqp', 'Replacement', 'playlist-a', 'item-a', '["Playlist"]', ?)` ).run(now);
@@ -167,4 +193,26 @@ test("durable playlist items resume and repeated submissions preserve tags and c
   expect(existing?.tags_json).toContain("Playlist");
   expect(sqlite.prepare("SELECT count(*) AS count FROM videos WHERE user_id = 'user' AND video_id = 'zyxwvutsrqp'").get()?.count).toBe(1);
   expect(sqlite.prepare("SELECT count(*) AS count FROM playlist_cleanup_jobs WHERE user_id = 'user' AND playlist_item_id = 'item-a'").get()?.count).toBe(1);
+});
+
+test("playlist discovery checkpoints each page and resumes from its saved token", async () => {
+  const now = new Date().toISOString();
+  sqlite.prepare(`INSERT INTO playlist_imports (id, user_id, playlist_id, title, tags_json, total_items, state, created_at, updated_at)
+    VALUES ('discover-a', 'user', 'playlist-a', 'playlist-a', '["Imported"]', 0, 'DISCOVERING', ?, ?)`).run(now, now);
+  context.readPage.mockResolvedValueOnce({ title: "Playlist A", nextPageToken: "next-page", videos: [
+    { video_id: "abcdefghijk", playlist_item_id: "item-a", title: "First", channel_title: null, channel_url: null, thumbnail_url: null, duration: null },
+  ] }).mockResolvedValueOnce({ title: null, nextPageToken: null, videos: [
+    { video_id: "zyxwvutsrqp", playlist_item_id: "item-b", title: "Second", channel_title: null, channel_url: null, thumbnail_url: null, duration: null },
+  ] });
+
+  expect(await processOnePlaylistImport("user")).toBe(false);
+  const { processOnePlaylistDiscovery } = await import("../lib/playlist-imports");
+  expect(await processOnePlaylistDiscovery("user")).toBe(true);
+  expect(sqlite.prepare("SELECT next_page_token, total_items, state FROM playlist_imports WHERE id = 'discover-a'").get())
+    .toEqual({ next_page_token: "next-page", total_items: 1, state: "DISCOVERING" });
+  expect(await processOnePlaylistDiscovery("user")).toBe(true);
+  expect(sqlite.prepare("SELECT next_page_token, total_items, state, discovery_complete FROM playlist_imports WHERE id = 'discover-a'").get())
+    .toEqual({ next_page_token: null, total_items: 2, state: "PENDING", discovery_complete: 1 });
+  expect(sqlite.prepare("SELECT count(*) AS count FROM playlist_import_items WHERE import_id = 'discover-a'").get()?.count).toBe(2);
+  expect(context.readPage.mock.calls.map(call => call[2])).toEqual([null, "next-page"]);
 });

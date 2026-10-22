@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../lib/auth";
 import { api } from "../../../lib/api";
-import { VideoIngestInput, videoTags, Video } from "../../../types";
+import { VideoIngestInput, videoTags, Video, PlaylistImportProgress } from "../../../types";
 import Navbar from "../../../components/Navbar";
 import IngestModal from "../../../components/IngestModal";
 import EditModal from "../../../components/EditModal";
@@ -65,6 +65,7 @@ function DashboardContent() {
   // Notification banner from OAuth redirect, notices & toasts
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [ingestionNotices, setIngestionNotices] = useState<IngestionNotice[]>([]);
+  const [playlistImports, setPlaylistImports] = useState<PlaylistImportProgress[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedDriveId, setCopiedDriveId] = useState<number | null>(null);
   const [sharedPromptLink, setSharedPromptLink] = useState<string | null>(null);
@@ -79,6 +80,17 @@ function DashboardContent() {
   useEffect(() => {
     if (user) api.preferences.getPromptLink().then(result => setSharedPromptLink(result.chatgpt_prompt_link)).catch(() => {});
   }, [user]);
+
+  const refreshPlaylistImports = useCallback(() => {
+    if (!user) return;
+    void api.videos.playlistImports().then(setPlaylistImports).catch(() => {});
+  }, [user]);
+  useEffect(() => { refreshPlaylistImports(); }, [refreshPlaylistImports]);
+  useEffect(() => {
+    if (!playlistImports.some(item => item.queued_items > 0 || item.state === "DISCOVERING")) return;
+    const timer = window.setInterval(refreshPlaylistImports, 5000);
+    return () => window.clearInterval(timer);
+  }, [playlistImports, refreshPlaylistImports]);
 
   useEffect(() => {
     const onPromptLinkUpdated = (event: Event) => setSharedPromptLink((event as CustomEvent<{ value: string | null }>).detail.value);
@@ -223,7 +235,9 @@ function DashboardContent() {
                 : "error"
               : "success";
           const message =
-            response.failed > 0
+            response.import_id
+              ? `Playlist import saved: ${response.total_found} videos queued. Progress is saved and will resume automatically.`
+              : response.failed > 0
               ? `Ingestion queued: ${response.processed} processing, ${response.failed} failed.`
               : `Ingestion queued: ${response.processed} processing, ${response.skipped_duplicates} duplicates skipped.`;
           setIngestionNotices((notices) =>
@@ -231,6 +245,7 @@ function DashboardContent() {
           );
           void loadVideos();
           void loadTags();
+          refreshPlaylistImports();
         })
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : "Failed to ingest videos";
@@ -239,7 +254,7 @@ function DashboardContent() {
           );
         });
     },
-    [loadVideos, loadTags]
+    [loadVideos, loadTags, refreshPlaylistImports]
   );
 
   const handleDelete = async (video: Video) => {
@@ -405,6 +420,34 @@ function DashboardContent() {
               </div>
             ))}
           </div>
+        )}
+
+        {playlistImports.length > 0 && (
+          <section aria-label="Playlist import progress" className="mb-6 space-y-3">
+            {playlistImports.map((item) => (
+              <div key={item.id} className="rounded-xl border border-neutral-700 bg-neutral-800/80 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-medium">{item.title}</h2>
+                    <p className="mt-1 text-sm text-neutral-300">
+                      {item.state === "DISCOVERING" ? "Discovering playlist · " : ""}
+                      {item.queued_items} queued · {item.completed_items} completed · {item.failed_items} failed · {item.total_items} total
+                    </p>
+                    {item.state === "DISCOVERING" && item.discovery_error && <p role="status" className="mt-1 text-xs text-amber-200">
+                      {item.discovery_error} Retrying automatically.
+                    </p>}
+                  </div>
+                  {item.failed_items > 0 && <button type="button" className="rounded-lg border border-neutral-600 px-3 py-2 text-sm hover:bg-neutral-700"
+                    onClick={() => void api.videos.retryPlaylistImport(item.id).then(refreshPlaylistImports).catch(error => setBannerMessage(error instanceof Error ? error.message : "Could not retry playlist import."))}>
+                    Retry failed videos
+                  </button>}
+                </div>
+                {item.failures.length > 0 && <ul className="mt-3 space-y-1 text-xs text-amber-200">
+                  {item.failures.map(failure => <li key={failure.video_id}>{failure.title}: {failure.error}</li>)}
+                </ul>}
+              </div>
+            ))}
+          </section>
         )}
 
         {/* Drive OAuth callback notification banner */}

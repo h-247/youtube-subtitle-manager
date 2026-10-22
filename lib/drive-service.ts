@@ -172,7 +172,7 @@ export async function syncOnePendingSubtitle(userId: string) {
     FROM videos WHERE user_id = ? AND status = 'COMPLETED' AND processing_paused = 0 AND drive_file_id IS NULL AND subtitle_text IS NOT NULL
     AND (drive_last_attempt_at IS NULL OR datetime(drive_last_attempt_at, printf('+%d seconds',
       CASE WHEN drive_retry_count <= 1 THEN 2 ELSE min(60, 2 * (1 << min(drive_retry_count - 1, 5))) END)) <= datetime(?, 'unixepoch'))
-    ORDER BY coalesce(drive_last_attempt_at, '') ASC, created_at ASC LIMIT 1`).bind(userId, nowMs).first<{
+    ORDER BY coalesce(drive_last_attempt_at, '') ASC, created_at ASC LIMIT 1`).bind(userId, Math.floor(nowMs / 1000)).first<{
       id: number; video_id: string; title: string; subtitle_text: string; drive_retry_count: number; drive_last_attempt_at: string | null;
     }>();
   if (!row) return null;
