@@ -2,12 +2,28 @@ const baseUrl = process.env.SITE_URL?.replace(/\/$/, "");
 const expectedRevision = process.env.EXPECTED_SITE_REVISION;
 const smokeUserId = process.env.SITE_SMOKE_USER_ID;
 const smokeUserEmail = process.env.SITE_SMOKE_USER_EMAIL;
-if (!baseUrl || !expectedRevision || !smokeUserId || !smokeUserEmail) {
-  throw new Error("Set SITE_URL, EXPECTED_SITE_REVISION, SITE_SMOKE_USER_ID, and SITE_SMOKE_USER_EMAIL.");
+const hostedJobsToken = process.env.HOSTED_JOBS_TOKEN;
+const sitesBypassToken = process.env.SITES_BYPASS_TOKEN;
+if (!baseUrl || !expectedRevision || !smokeUserId || !smokeUserEmail || !hostedJobsToken || !sitesBypassToken) {
+  throw new Error("Set SITE_URL, EXPECTED_SITE_REVISION, SITE_SMOKE_USER_ID, SITE_SMOKE_USER_EMAIL, HOSTED_JOBS_TOKEN, and SITES_BYPASS_TOKEN.");
 }
 
 const deadline = Date.now() + 10 * 60_000;
 const verificationStartedAt = Date.now();
+const schedulerResponse = await fetch(`${baseUrl}/api/internal/jobs/run`, {
+  method: "POST",
+  headers: {
+    authorization: `Bearer ${hostedJobsToken}`,
+    "oai-sites-authorization": `Bearer ${sitesBypassToken}`,
+    "content-type": "application/json",
+  },
+  body: "{}",
+  signal: AbortSignal.timeout(10_000),
+  cache: "no-store",
+});
+if (!schedulerResponse.ok) throw new Error(`Protected hosted scheduler returned ${schedulerResponse.status}.`);
+const schedulerResult = await schedulerResponse.json();
+if (schedulerResult.completed !== true) throw new Error("Protected hosted scheduler did not report completion.");
 let health;
 let lastObservedHealth;
 while (Date.now() < deadline) {
