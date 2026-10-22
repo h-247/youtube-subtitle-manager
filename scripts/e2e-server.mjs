@@ -9,7 +9,8 @@ const state = mkdtempSync(path.join(tmpdir(), "youtube-release-e2e-"));
 const files = new Map();
 let uploads = 0, captions = 0, sequence = 0;
 const options = {
-  modules: readdirSync("dist/server", { recursive: true }).filter(n => /\.(?:m?js)$/.test(n))
+  modules: ["index.js", ...readdirSync("dist/server", { recursive: true })
+    .filter(n => n !== "index.js" && /\.(?:m?js)$/.test(n))]
     .map(n => ({ type: "ESModule", path: path.resolve("dist/server", n) })),
   modulesRoot: path.resolve("dist/server"), compatibilityDate: "2026-05-15", compatibilityFlags: ["nodejs_compat"],
   d1Databases: ["DB"], d1Persist: state,
